@@ -95,7 +95,7 @@ def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
 
 
 
-def train_model_smooth(model, train_loader, val_loader, optimizer, loss_func, num_epoch,
+def train_model_smooth(model, train_loader, val_loader, loss_func, num_epoch,
                        alpha = 0, kind = "standard", num_classes = None,
                        temperature = 0.1):
     """
@@ -108,9 +108,10 @@ def train_model_smooth(model, train_loader, val_loader, optimizer, loss_func, nu
     Output :
         - the trained model
         - the loss function after each iteration
-        - the accuracy on the training set
+        - the accuracy on the validation set
     """
     
+    optimizer = optim.SGD(model.parameters(), lr=1.75)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='max', patience=5, verbose=True,
@@ -169,6 +170,7 @@ def test_model(model, test_loader):
     Run the model on the test set. Outputs the test set standard accuracy
     """
     
+    model.eval()
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
@@ -258,9 +260,6 @@ def run_fgsm(model, test_loader, epsilon, loss_func):
 
 # -----------------------
     
-x = [2,1,2]
-y = [1,1,1]
-x+y
 
 
     
