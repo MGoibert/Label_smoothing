@@ -9,41 +9,37 @@ Created on Wed Feb 13 14:05:17 2019
 
 
 
+
 """
 Libraries
 """
 
 import os
-#os.chdir("/Users/m.goibert/Downloads/safe_ml-master/code")
+os.chdir("/Users/m.goibert/Documents/Criteo/Code/LS_good_version")
 os.getcwd()
+import Train_test_label_smoothing
 import torch
 import torch.nn as nn
-#from torch.autograd import Variable
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.optim as optim
-#from torch.utils.data import DataLoader
-#from torch.utils.data import TensorDataset
-#import torch.nn.functional as F
 
-#from mlp import MLP
-#from utils import (train_net, get_prediction_uncertainty, logging,
-#                   parse_cmdline_args)
-#from datasets import generate_tsipras18_data
-#import fgsm_attack
-#from plotting import plot_adversarial_results
-
-#from tqdm import tqdm
 from operator import itemgetter
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 import pandas as pd
 import time
+import random
 
 # Change precision tensor
 torch.set_default_tensor_type(torch.DoubleTensor)
+random.seed(1)
+np.random.seed(1)
+
+
 
 
 
@@ -78,7 +74,7 @@ Dataset
 
 # Import MNIST
 root = './data'
-batch_size = 500
+batch_size = 150
 trans = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
 
 train_set = dset.MNIST(root=root, train=True, transform=trans, download=True)
@@ -107,116 +103,207 @@ test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), t
 
 
 
-    
+
+
+
+
+
+
+
+    """
+    Running the experiement
+                        """
+
+
+
 """
-Training
+Setting the parameters
 """
 
-# All parameters / Initialization
+
 loss_func = smooth_CE
 num_classes = 10
-alphas = np.concatenate( (np.linspace(0,0.1, 11), np.linspace(0.1,1, 10)[1:]) )
-num_epoch = 8
-kind = "adversarial"
+alphas = np.concatenate( (np.linspace(0,0.1, 3), np.linspace(0.1,1, 10)[1:]) )
+num_epoch = 7
+kind = "boltzmann"
 temperature = 0.1
 
+epsilons = np.linspace(0,0.3, 7)
 
-train_res = []
+
+
+
+
+
+
+
+"""
+Running
+"""
+
+accuracies_adv = []
+nets = []
+
 for alpha in alphas:
+    print("alpha = ", alpha)
     model = MLPNet()
-    optimizer = optim.SGD(model.parameters(), lr=2)
+    #optimizer = optim.SGD(model.parameters(), lr=1.75)
     
-    model, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
-                       optimizer, loss_func, num_epoch,
-                       alpha = alpha, kind = kind, num_classes = num_classes,
-                       temperature = 0.1)
-    train_res.append( [model, loss_history, acc] )
-
-i = 0
-for i, alpha in enumerate(alphas):
-    loss_history = train_res[i][1]
-    #loss_history = torch.stack( loss_history )
-    plt.plot(loss_history)#.detach().numpy())
+    net, loss_history, acc_tr = train_model_smooth(model, train_loader, val_loader,
+                       loss_func, num_epoch, alpha = alpha, kind = kind,
+                       num_classes = num_classes,temperature = 0.1)
+    del model
+    print("Accuracy (training) = ", acc_tr)
+    plt.plot(loss_history)
     plt.show()
     
-print( list(map(itemgetter(2), train_res)) )
+    nets.append(net)    
     
-plt.plot(alphas ,list(map(itemgetter(2), train_res)))
-plt.xlabel('Alpha')
-plt.ylabel('Train accuracy')
-plt.title("Standard accuracy on the train set (standard smoothing)")
-plt.show()
-
-
-
-
-
-
-"""
-Testing
-"""
-
-test_accs = []
-for i, (model, loss, acc) in enumerate(train_res):
-    test_acc = test_model(model, test_loader)
-    test_accs.append(test_acc)
     
-plt.plot(alphas, test_accs)
-plt.xlabel('Alpha')
-plt.ylabel('Standard accuracy')
-plt.title("Standard accuracy (standard smoothing)")
-plt.show()
-
-
-
-
-"""
-Adversarial training and testing
-"""
-
-
-epsilons = np.linspace(0,0.1, 11)
-
-accuracies = []
-
-for epsilon in epsilons:
-    print("epsilon", epsilon)
-    accuracy = []
-    c = 0
-    for model, loss, acc in train_res:
+    print("Accuracy (Test) = ", test_model(net, test_loader))
+    
+    
+    accuracy_adv = []
+    for epsilon in epsilons :
+        print("epsilon = ", epsilon)
         start_time = time.time()
-        c +=1
-        print("Model n°", c)
-        acc, ex = run_fgsm(model, test_loader, epsilon, loss_func)
-        accuracy.append(acc)
+        acc_adv, ex_adv = run_fgsm(net, test_loader, epsilon, loss_func)
+        accuracy_adv.append(acc_adv)
         end_time = time.time()
         print("Execution time = %.2f sec" % (end_time - start_time))
-    accuracies.append(accuracy)
-        
-        
-for i, epsilon in enumerate(epsilons):
-    name = "epsilon =" + str(epsilon)
-    plt.plot( alphas, accuracies[i], label = name )
-plt.legend()
-plt.xlabel("Alpha (Boltzmann method)")
+    
+    accuracies_adv.append(accuracy_adv)
+    del net
+    
+    print("\n \n \n")
+    
+
+
+
+
+
+"""
+Analysis
+"""
+
+
+for i, alph in enumerate(alphas):
+    if i < 10:
+        name = "a =" + str(alph)
+        plt.plot( epsilons[0:3], accuracies_adv[i][0:3], label = name, alpha = 0.6 )
+plt.legend(loc=(1.04,0))
+plt.xlabel("Epsilon")
 plt.ylabel("Accuracy")
 plt.title("Adv. accurarcy for different values of epsilon (Boltzmann method)")
+
+plt.savefig('/Users/m.goibert/Documents/Criteo/Code/LS_good_version/adv_acc_bolt2.png', dpi = 300)
 plt.show()
 
+# -----
 
+plt.plot( epsilons, accuracies_adv[0], label = "alpha = 0", alpha = 0.6 )
+plt.plot( epsilons, accuracies_adv[2], label = "alpha = 0.1", alpha = 0.6 )
+plt.plot( epsilons, accuracies_adv[4], label = "alpha = 0.3", alpha = 0.6 )
+plt.legend()
+plt.xlabel("Epsilon")
+plt.ylabel("Accuracy")
+plt.title("Adv. accurarcy for different values of epsilon (Boltzmann method)")
+plt.savefig('/Users/m.goibert/Documents/Criteo/Code/LS_good_version/adv_acc_bolt3.png', dpi = 300)
 
+plt.show()
 
+# -----
 d = {'acc_adv':[], 'epsilon':[], 'alpha': [], 'method': []}
 df = pd.DataFrame(data = d)
 
-for i in range(len(accuracies)):
-    eps = np.repeat(epsilons[i], len(accuracies[i]))
-    meth = np.repeat("boltzmann", len(accuracies[i]))
-    d = { 'acc_adv': accuracies[i], 'epsilon': eps, 'alpha': alphas, 'method':meth }
+for i in range(len(accuracies_adv)):
+    alph = np.repeat(alphas[i], len(accuracies_adv[i]))
+    meth = np.repeat("boltzmann", len(accuracies_adv[i]))
+    d = { 'acc_adv': accuracies_adv[i], 'epsilon': epsilons, 'alpha': alph, 'method':meth }
     df_temp = pd.DataFrame(data = d)
     df = df.append(df_temp, ignore_index=True)
     
-file_name = '/Users/m.goibert/Documents/Criteo/Code/LS_good_version/Dataframes_outputs/acc_adv_boltzmann.csv'
-df.to_csv(file_name, sep = ',')
+    
+    
+sns.set()
+sns.relplot(x="epsilon", y="acc_adv", hue="alpha", data=df, kind = "line");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---------------------------------
+# ---------------------------------
+
+
+"""
+Normal model : test to check the functions
+"""
+model = MLPNet()
+#optimizer = optim.SGD(model.parameters(), lr=1)
+model_norm, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
+                       loss_func, num_epoch=num_epoch, alpha = 0, kind = kind,
+                       num_classes = num_classes, temperature = 0.1)
+plt.plot(loss_history)
+plt.show()
+acc
+
+test_acc = test_model(model_norm, test_loader)
+
+accuracies_norm = []
+examples_norm = []
+# Run test for each epsilon
+for eps in epsilons:
+    print("eps= ", eps)
+    acc, ex = run_fgsm(model_norm,  test_loader, eps, loss_func)
+    accuracies_norm.append(acc)
+    examples_norm.append(ex)
+
+plt.plot(epsilons, accuracies_norm)
+plt.show()
+
+
+
+# ---
+
+
+
+model = MLPNet()
+#optimizer = optim.SGD(model.parameters(), lr=1)
+model_a1, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
+                       loss_func, num_epoch=num_epoch, alpha = 0.1, kind = kind,
+                       num_classes = num_classes, temperature = 0.1)
+plt.plot(loss_history)
+plt.show()
+acc
+
+test_acc = test_model(model_a1, test_loader)
+
+accuracies_1= []
+examples_1 = []
+# Run test for each epsilon
+for eps in epsilons:
+    print("eps= ", eps)
+    acc, ex = run_fgsm(model_a1,  test_loader, eps, loss_func)
+    accuracies_1.append(acc)
+    examples_1.append(ex)
+
+plt.plot(epsilons, accuracies_1)
+plt.show()
+
+
+
+
+
 
 
