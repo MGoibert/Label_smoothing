@@ -95,7 +95,7 @@ def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
 
 
 
-def train_model_smooth(model, train_loader, val_loader, loss_func, num_epoch,
+def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        alpha = 0, kind = "standard", num_classes = None,
                        temperature = 0.1):
     """
@@ -119,7 +119,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epoch,
     
     loss_history = []
     
-    for epoch in range(num_epoch):
+    for epoch in range(num_epochs):
         
         model.train()
         for x_batch, y_batch in tqdm(train_loader):
@@ -203,7 +203,8 @@ def attack_fgsm(data, epsilon, data_grad):
 # -----------------------
     
 
-def run_fgsm(model, test_loader, epsilon, loss_func):
+def run_fgsm(model, test_loader, alpha, kind, temperature,
+             epsilon, loss_func, num_classes):
     
     """
     Run the fgsm attack on the whole test set.
@@ -218,7 +219,7 @@ def run_fgsm(model, test_loader, epsilon, loss_func):
         data.requires_grad = True
         output = model(data)
         target_smooth = smooth_label(target, alpha, y_pred=output, kind=kind,
-                                            num_classes=num_classes, temperature = temperature)
+                                     num_classes=num_classes, temperature = temperature)
         init_pred = output.max(1, keepdim=True)[1] # Prediction (original data)
         
         if init_pred.item() != target.item():
