@@ -14,10 +14,11 @@ Created on Wed Feb 13 14:05:17 2019
 Libraries
 """
 
+from operator import itemgetter
 import os
-os.chdir("/Users/m.goibert/Documents/Criteo/Code/LS_good_version")
-os.getcwd()
-import Train_test_label_smoothing
+import time
+import random
+
 import torch
 import torch.nn as nn
 import torchvision.datasets as dset
@@ -25,14 +26,19 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.optim as optim
 
-from operator import itemgetter
+from joblib import delayed, Parallel
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import pandas as pd
-import time
-import random
+
+# os.chdir("/Users/m.goibert/Documents/Criteo/Code/LS_good_version")
+# os.getcwd()
+from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
+                                        train_model_smooth, test_model,
+                                        attack_fgsm, run_fgsm)
+from utils import parse_cmdline_args
 
 # Change precision tensor
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -63,18 +69,16 @@ class MLPNet(nn.Module):
         x = self.fc3(x)
         x = self.soft(x)
         return x
-    
+
     def __repr__(self):
         return "MLP"
-    
-    
-"""
-Dataset
-"""
 
+### Parse command-line arguments
+args = parse_cmdline_args()
+### Dataset
 # Import MNIST
 root = './data'
-batch_size = 150
+batch_size = args.batch_size
 trans = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
 
 train_set = dset.MNIST(root=root, train=True, transform=trans, download=True)
@@ -101,39 +105,17 @@ test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), t
                           map(itemgetter(1), test_loader.dataset) ))
 
 
-
-
-
-
-
-
-
-
-
-    """
-    Running the experiement
-                        """
-
-
-
-"""
-Setting the parameters
-"""
-
-
+# Running the experiement
+num_jobs = args.num_jobs
 loss_func = smooth_CE
 num_classes = 10
-alphas = np.concatenate( (np.linspace(0,0.1, 3), np.linspace(0.1,1, 10)[1:]) )
-num_epoch = 7
+num_epsilons = args.num_epsilons
+alphas = np.concatenate((np.linspace(0, 0.1, 3),
+                         np.linspace(0.1,1, 10)[1:]))
+num_epochs = args.num_epochs  # XXX TODO rm hack
 kind = "boltzmann"
 temperature = 0.1
-
-epsilons = np.linspace(0,0.3, 7)
-
-
-
-
-
+epsilons = np.linspace(0,0.3, args.num_epsilons)
 
 
 
@@ -141,45 +123,55 @@ epsilons = np.linspace(0,0.3, 7)
 Running
 """
 
-accuracies_adv = []
-nets = []
+net = MLPNet()
 
-for alpha in alphas:
+
+def run_experiment(net, alpha, kind, epsilons):
     print("alpha = ", alpha)
-    model = MLPNet()
-    #optimizer = optim.SGD(model.parameters(), lr=1.75)
-    
-    net, loss_history, acc_tr = train_model_smooth(model, train_loader, val_loader,
-                       loss_func, num_epoch, alpha = alpha, kind = kind,
-                       num_classes = num_classes,temperature = 0.1)
-    del model
+    #optimizer = optim.SGD(model.parameters(), lr=1.75) 
+    net, loss_history, acc_tr = train_model_smooth(
+        net, train_loader, val_loader, loss_func, num_epochs, alpha = alpha,
+        kind = kind, num_classes = num_classes, temperature = temperature)
+
     print("Accuracy (training) = ", acc_tr)
-    plt.plot(loss_history)
-    plt.show()
-    
-    nets.append(net)    
-    
-    
     print("Accuracy (Test) = ", test_model(net, test_loader))
-    
-    
+
     accuracy_adv = []
-    for epsilon in epsilons :
+    for epsilon in epsilons:
         print("epsilon = ", epsilon)
         start_time = time.time()
-        acc_adv, ex_adv = run_fgsm(net, test_loader, epsilon, loss_func)
+        acc_adv, ex_adv = run_fgsm(net, test_loader, alpha, kind, temperature,
+                                   epsilon, loss_func, num_classes)
         accuracy_adv.append(acc_adv)
         end_time = time.time()
-        print("Execution time = %.2f sec" % (end_time - start_time))
-    
-    accuracies_adv.append(accuracy_adv)
-    del net
-    
-    print("\n \n \n")
-    
+        delta_time = (end_time - start_time)
+        print("Execution time = %.2f sec" % delta_time)
+
+    return net, loss_history, acc_tr, accuracy_adv, delta_time
 
 
+# run experiments in parallel
+results = Parallel(n_jobs=num_jobs)(delayed(run_experiment)(net, alpha, kind,
+                                                            epsilons)
+                                    for alpha in alphas)
 
+# form dataframe with results
+df = []
+_, axes = plt.figure(1, len(alphas), figsize=(3 * len(alphas), 4),
+                     sharex=True, sharey=True)
+axes = axes.ravel()
+for alpha, ax, (_, loss_history, _, accs, _) in zip(alphas, axes, results):
+    ax.plot(loss_history)
+    ax.set_xlabel("iteration")
+    ax.set_ylabel("loss")
+    for epsilon, acc in zip(epsilons, accs):
+        df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
+                       temperature=temperature))
+plt.tight_layout()
+df = pd.DataFrame(df)
+df.to_pickle("results.pkl")
+plt.show()
+assert 0
 
 
 """
@@ -228,20 +220,6 @@ for i in range(len(accuracies_adv)):
 sns.set()
 sns.relplot(x="epsilon", y="acc_adv", hue="alpha", data=df, kind = "line");
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------
 # ---------------------------------
 
@@ -252,7 +230,7 @@ Normal model : test to check the functions
 model = MLPNet()
 #optimizer = optim.SGD(model.parameters(), lr=1)
 model_norm, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
-                       loss_func, num_epoch=num_epoch, alpha = 0, kind = kind,
+                       loss_func, num_epochs=num_epochs, alpha = 0, kind = kind,
                        num_classes = num_classes, temperature = 0.1)
 plt.plot(loss_history)
 plt.show()
@@ -281,7 +259,7 @@ plt.show()
 model = MLPNet()
 #optimizer = optim.SGD(model.parameters(), lr=1)
 model_a1, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
-                       loss_func, num_epoch=num_epoch, alpha = 0.1, kind = kind,
+                       loss_func, num_epochs=num_epochs, alpha = 0.1, kind = kind,
                        num_classes = num_classes, temperature = 0.1)
 plt.plot(loss_history)
 plt.show()
