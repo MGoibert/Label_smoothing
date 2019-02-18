@@ -110,7 +110,7 @@ num_epochs = args.num_epochs
 epsilons = np.linspace(0, args.max_epsilon, num=args.num_epsilons)
 experiment_name = args.experiment_name
 if experiment_name == "temperature":
-    temperatures = np.logspace(-4, 1, num=5)
+    temperatures = np.logspace(-4, 3, num=8)
 else:
     temperatures = [0.1]
 
