@@ -46,10 +46,6 @@ random.seed(1)
 np.random.seed(1)
 
 
-
-
-
-
 """
 Model
 """
@@ -91,7 +87,7 @@ for i, x in enumerate(test_set):
         val_data.append(x)
     else:
         test.append(x)
-        
+
 train_loader = torch.utils.data.DataLoader(dataset=train_set,
                                            batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
@@ -109,21 +105,22 @@ num_jobs = args.num_jobs
 loss_func = smooth_CE
 num_classes = 10
 num_epsilons = args.num_epsilons
-num_alphas = max(20, args.num_jobs)
-alphas = np.linspace(0, 1, num=num_alphas)
+alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
-kind = "boltzmann"
-temperature = 0.1
-epsilons = np.linspace(0, 0.3, args.num_epsilons)
+epsilons = np.linspace(0, args.max_epsilon, num=args.num_epsilons)
+experiment_name = args.experiment_name
+if experiment_name == "temperature":
+    temperatures = np.logspace(-4, 1, num=5)
+else:
+    temperatures = [0.1]
 
 
 """
 Running
 """
 
-def run_experiment(alpha, kind, epsilons):
+def run_experiment(alpha, kind, epsilons, temperature=None):
     net = MLPNet()
-    net = net.double()
 
     print("alpha = ", alpha)
     #optimizer = optim.SGD(model.parameters(), lr=1.75) 
@@ -145,142 +142,29 @@ def run_experiment(alpha, kind, epsilons):
         delta_time = (end_time - start_time)
         print("Execution time = %.2f sec" % delta_time)
 
-    return net, loss_history, acc_tr, accuracy_adv, delta_time
+    return (net, alpha, kind, temperature, loss_history, acc_tr, accuracy_adv,
+            delta_time)
 
-
-# run experiments in parallel
+# run experiments in parallel with joblib
+# XXX You need to instal joblib version 0.11 like so
+# XXX conda install -c conda-forge joblib=0.11
+# XXX Newer versions produce the error:
+# XXX RuntimeError: Expected object of scalar type Float but got scalar type
+# XXX Double for argument #4 'mat1'
 df = []
-for kind in ["standard", "adversarial", "boltzmann"]:
-    results = Parallel(n_jobs=num_jobs)(delayed(run_experiment)(alpha, kind,
-                                                                epsilons)
-                                        for alpha in alphas)
-
-    # form dataframe with results
-    # _, axes = plt.figure(1, len(alphas), figsize=(3 * len(alphas), 4),
-    # sharex=True, sharey=True)
-    # axes = axes.ravel()
-    for alpha, (_, loss_history, _, accs, _) in zip(alphas, results):
-        # ax.plot(loss_history)
-        # ax.set_xlabel("iteration")
-        # ax.set_ylabel("loss")
-        for epsilon, acc in zip(epsilons, accs):
-            df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
-                           temperature=temperature))
-# plt.tight_layout()
+jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
+        for temperature in temperatures]
+if experiment_name != "temperature":
+    jobs += [(alpha, kind, None) for alpha in alphas
+             for kind in ["standard", "adversarial"]]
+for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
+        delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
+        for alpha, kind, temperature in jobs):
+    for epsilon, acc in zip(epsilons, accs):
+        df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
+                       temperature=temperature))
 df = pd.DataFrame(df)
+results_file = "results_%s_experiment.pkl" % experiment_name
+df.to_pickle(results_file)
+print("Results written to file: %s" % results_file)
 df.to_pickle("results.pkl")
-# plt.show()
-assert 0
-
-
-"""
-Analysis
-"""
-
-
-for i, alph in enumerate(alphas):
-    if i < 10:
-        name = "a =" + str(alph)
-        plt.plot( epsilons[0:3], accuracies_adv[i][0:3], label = name, alpha = 0.6 )
-plt.legend(loc=(1.04,0))
-plt.xlabel("Epsilon")
-plt.ylabel("Accuracy")
-plt.title("Adv. accurarcy for different values of epsilon (Boltzmann method)")
-
-plt.savefig('/Users/m.goibert/Documents/Criteo/Code/LS_good_version/adv_acc_bolt2.png', dpi = 300)
-plt.show()
-
-# -----
-
-plt.plot( epsilons, accuracies_adv[0], label = "alpha = 0", alpha = 0.6 )
-plt.plot( epsilons, accuracies_adv[2], label = "alpha = 0.1", alpha = 0.6 )
-plt.plot( epsilons, accuracies_adv[4], label = "alpha = 0.3", alpha = 0.6 )
-plt.legend()
-plt.xlabel("Epsilon")
-plt.ylabel("Accuracy")
-plt.title("Adv. accurarcy for different values of epsilon (Boltzmann method)")
-plt.savefig('/Users/m.goibert/Documents/Criteo/Code/LS_good_version/adv_acc_bolt3.png', dpi = 300)
-
-plt.show()
-
-# -----
-d = {'acc_adv':[], 'epsilon':[], 'alpha': [], 'method': []}
-df = pd.DataFrame(data = d)
-
-for i in range(len(accuracies_adv)):
-    alph = np.repeat(alphas[i], len(accuracies_adv[i]))
-    meth = np.repeat("boltzmann", len(accuracies_adv[i]))
-    d = { 'acc_adv': accuracies_adv[i], 'epsilon': epsilons, 'alpha': alph, 'method':meth }
-    df_temp = pd.DataFrame(data = d)
-    df = df.append(df_temp, ignore_index=True)
-    
-    
-    
-sns.set()
-sns.relplot(x="epsilon", y="acc_adv", hue="alpha", data=df, kind = "line");
-
-# ---------------------------------
-# ---------------------------------
-
-
-"""
-Normal model : test to check the functions
-"""
-model = MLPNet()
-#optimizer = optim.SGD(model.parameters(), lr=1)
-model_norm, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
-                       loss_func, num_epochs=num_epochs, alpha = 0, kind = kind,
-                       num_classes = num_classes, temperature = 0.1)
-plt.plot(loss_history)
-plt.show()
-acc
-
-test_acc = test_model(model_norm, test_loader)
-
-accuracies_norm = []
-examples_norm = []
-# Run test for each epsilon
-for eps in epsilons:
-    print("eps= ", eps)
-    acc, ex = run_fgsm(model_norm,  test_loader, eps, loss_func)
-    accuracies_norm.append(acc)
-    examples_norm.append(ex)
-
-plt.plot(epsilons, accuracies_norm)
-plt.show()
-
-
-
-# ---
-
-
-
-model = MLPNet()
-#optimizer = optim.SGD(model.parameters(), lr=1)
-model_a1, loss_history, acc = train_model_smooth(model, train_loader, val_loader,
-                       loss_func, num_epochs=num_epochs, alpha = 0.1, kind = kind,
-                       num_classes = num_classes, temperature = 0.1)
-plt.plot(loss_history)
-plt.show()
-acc
-
-test_acc = test_model(model_a1, test_loader)
-
-accuracies_1= []
-examples_1 = []
-# Run test for each epsilon
-for eps in epsilons:
-    print("eps= ", eps)
-    acc, ex = run_fgsm(model_a1,  test_loader, eps, loss_func)
-    accuracies_1.append(acc)
-    examples_1.append(ex)
-
-plt.plot(epsilons, accuracies_1)
-plt.show()
-
-
-
-
-
-
-
