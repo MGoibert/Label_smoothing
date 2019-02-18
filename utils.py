@@ -15,7 +15,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 # config
-torch.set_default_tensor_type(torch.DoubleTensor)
+# torch.set_default_tensor_type(torch.DoubleTensor)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 

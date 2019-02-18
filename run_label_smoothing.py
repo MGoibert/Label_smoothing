@@ -104,29 +104,27 @@ val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
 test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), test_loader.dataset)),
                           map(itemgetter(1), test_loader.dataset) ))
 
-
 # Running the experiement
 num_jobs = args.num_jobs
 loss_func = smooth_CE
 num_classes = 10
 num_epsilons = args.num_epsilons
-alphas = np.concatenate((np.linspace(0, 0.1, 3),
-                         np.linspace(0.1,1, 10)[1:]))
-num_epochs = args.num_epochs  # XXX TODO rm hack
+num_alphas = max(20, args.num_jobs)
+alphas = np.linspace(0, 1, num=num_alphas)
+num_epochs = args.num_epochs
 kind = "boltzmann"
 temperature = 0.1
-epsilons = np.linspace(0,0.3, args.num_epsilons)
-
+epsilons = np.linspace(0, 0.3, args.num_epsilons)
 
 
 """
 Running
 """
 
-net = MLPNet()
+def run_experiment(alpha, kind, epsilons):
+    net = MLPNet()
+    net = net.double()
 
-
-def run_experiment(net, alpha, kind, epsilons):
     print("alpha = ", alpha)
     #optimizer = optim.SGD(model.parameters(), lr=1.75) 
     net, loss_history, acc_tr = train_model_smooth(
@@ -151,26 +149,27 @@ def run_experiment(net, alpha, kind, epsilons):
 
 
 # run experiments in parallel
-results = Parallel(n_jobs=num_jobs)(delayed(run_experiment)(net, alpha, kind,
-                                                            epsilons)
-                                    for alpha in alphas)
-
-# form dataframe with results
 df = []
-_, axes = plt.figure(1, len(alphas), figsize=(3 * len(alphas), 4),
-                     sharex=True, sharey=True)
-axes = axes.ravel()
-for alpha, ax, (_, loss_history, _, accs, _) in zip(alphas, axes, results):
-    ax.plot(loss_history)
-    ax.set_xlabel("iteration")
-    ax.set_ylabel("loss")
-    for epsilon, acc in zip(epsilons, accs):
-        df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
-                       temperature=temperature))
-plt.tight_layout()
+for kind in ["standard", "adversarial", "boltzmann"]:
+    results = Parallel(n_jobs=num_jobs)(delayed(run_experiment)(alpha, kind,
+                                                                epsilons)
+                                        for alpha in alphas)
+
+    # form dataframe with results
+    # _, axes = plt.figure(1, len(alphas), figsize=(3 * len(alphas), 4),
+    # sharex=True, sharey=True)
+    # axes = axes.ravel()
+    for alpha, (_, loss_history, _, accs, _) in zip(alphas, results):
+        # ax.plot(loss_history)
+        # ax.set_xlabel("iteration")
+        # ax.set_ylabel("loss")
+        for epsilon, acc in zip(epsilons, accs):
+            df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
+                           temperature=temperature))
+# plt.tight_layout()
 df = pd.DataFrame(df)
 df.to_pickle("results.pkl")
-plt.show()
+# plt.show()
 assert 0
 
 
