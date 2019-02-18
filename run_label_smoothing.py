@@ -15,23 +15,20 @@ Libraries
 """
 
 from operator import itemgetter
-import os
 import time
 import random
+import logging
 
 import torch
 import torch.nn as nn
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torch.nn.functional as F
-import torch.optim as optim
 
-from joblib import delayed, Parallel
-
-import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
 import pandas as pd
+
+from joblib import delayed, Parallel
 
 # os.chdir("/Users/m.goibert/Documents/Criteo/Code/LS_good_version")
 # os.getcwd()
@@ -39,6 +36,7 @@ from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
                                         attack_fgsm, run_fgsm)
 from utils import parse_cmdline_args
+from lenet import LeNet
 
 # Change precision tensor
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -109,10 +107,16 @@ alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
 epsilons = np.linspace(0, args.max_epsilon, num=args.num_epsilons)
 experiment_name = args.experiment_name
+use_cnn = args.use_cnn
 if experiment_name == "temperature":
     temperatures = np.logspace(-4, 3, num=8)
 else:
     temperatures = [0.1]
+
+# define what device we are using
+cuda = torch.cuda.is_available()
+logging.info("CUDA Available: {}".format(cuda))
+device = torch.device("cuda" if cuda else "cpu")
 
 
 """
@@ -120,27 +124,34 @@ Running
 """
 
 def run_experiment(alpha, kind, epsilons, temperature=None):
-    net = MLPNet()
+    if use_cnn:
+        net = LeNet()
+        # load the pretrained net
+        pretrained_net = "lenet_mnist_model.pth"
+        net.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
+    else:
+        net = MLPNet()
+    net = net.to(device)
 
-    print("alpha = ", alpha)
+    logging.info("alpha = {}".format(alpha))
     #optimizer = optim.SGD(model.parameters(), lr=1.75) 
     net, loss_history, acc_tr = train_model_smooth(
         net, train_loader, val_loader, loss_func, num_epochs, alpha = alpha,
         kind = kind, num_classes = num_classes, temperature = temperature)
 
-    print("Accuracy (training) = ", acc_tr)
-    print("Accuracy (Test) = ", test_model(net, test_loader))
+    logging.info("Accuracy (training) = ", acc_tr)
+    logging.info("Accuracy (Test) = ", test_model(net, test_loader))
 
     accuracy_adv = []
     for epsilon in epsilons:
-        print("epsilon = ", epsilon)
+        logging.info("epsilon = ", epsilon)
         start_time = time.time()
         acc_adv, ex_adv = run_fgsm(net, test_loader, alpha, kind, temperature,
                                    epsilon, loss_func, num_classes)
         accuracy_adv.append(acc_adv)
         end_time = time.time()
         delta_time = (end_time - start_time)
-        print("Execution time = %.2f sec" % delta_time)
+        logging.info("Execution time = %.2f sec" % delta_time)
 
     return (net, alpha, kind, temperature, loss_history, acc_tr, accuracy_adv,
             delta_time)
@@ -166,5 +177,5 @@ for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
 df = pd.DataFrame(df)
 results_file = "results_%s_experiment.pkl" % experiment_name
 df.to_pickle(results_file)
-print("Results written to file: %s" % results_file)
+logging.info("Results written to file: %s" % results_file)
 df.to_pickle("results.pkl")

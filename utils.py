@@ -48,8 +48,8 @@ def parse_cmdline_args():
         '--num_epsilons', type=int, default=10,
         help="number of epsilons to use in smoothing")
     parser.add_argument(
-        '--use_cuda', action="store_true",
-        help="whether to use cuda or not")
+        '--use_cnn', action="store_true",
+        help="whether to use convnets or not")
     parser.add_argument(
         '--num_jobs', type=int, default=1,
         help="number of jobs to spawn for the experiment")
