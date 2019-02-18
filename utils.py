@@ -15,7 +15,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 # config
-torch.set_default_tensor_type(torch.DoubleTensor)
+# torch.set_default_tensor_type(torch.DoubleTensor)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
@@ -27,6 +27,9 @@ def parse_cmdline_args():
         description="Run experiments like a boss!",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
+        '--experiment_name', type=str, choices=["temperature", "all"],
+        default="all", help="batch size for SGD")
+    parser.add_argument(
         '--batch_size', type=int, default=100,
         help="batch size for SGD")
     parser.add_argument(
@@ -36,11 +39,17 @@ def parse_cmdline_args():
         '--learning_rate', type=float, default=1e-4,
         help="learning rate for SGD")
     parser.add_argument(
+        '--num_alphas', type=int, default=10,
+        help="number of alphas to use in smoothing")
+    parser.add_argument(
+        '--max_epsilon', type=float, default=.25,
+        help="maximum adversarial perturbation in experiments")
+    parser.add_argument(
+        '--num_epsilons', type=int, default=10,
+        help="number of epsilons to use in smoothing")
+    parser.add_argument(
         '--use_cuda', action="store_true",
         help="whether to use cuda or not")
-    parser.add_argument(
-        '--num_epsilons', type=int, default=7,
-        help='number of epislon values to consider in attack')
     parser.add_argument(
         '--num_jobs', type=int, default=1,
         help="number of jobs to spawn for the experiment")
