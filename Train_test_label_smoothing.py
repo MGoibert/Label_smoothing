@@ -72,7 +72,7 @@ def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
     Implements label-smoothing, both the standard and adversarial flavors.
     """
 
-    y_ = (1 - alpha) * one_hot(y, num_classes=10)
+    y_ = (1 - alpha) * one_hot(y, num_classes=num_classes)
     if alpha > 0.:
         if kind == "standard":
             salt = torch.ones_like(y_)
@@ -185,16 +185,15 @@ def test_model(model, test_loader):
 
 # -----------------------
 
-def attack_fgsm(data, epsilon, data_grad):
+def attack_fgsm(data, epsilon, data_grad, lims=(0, 1)):
     
     """
     Run the FGSM method attack on a single data point using espilon.
     Returns the perturbated data.
     """
-    
     sign_data_grad = data_grad.sign()
     perturbed_data = data + epsilon*sign_data_grad
-    perturbed_data = torch.clamp(perturbed_data, 0, 1)
+    perturbed_data = torch.clamp(perturbed_data, *lims)
     
     return perturbed_data
 
@@ -204,7 +203,7 @@ def attack_fgsm(data, epsilon, data_grad):
     
 
 def run_fgsm(model, test_loader, alpha, kind, temperature,
-             epsilon, loss_func, num_classes):
+             epsilon, loss_func, num_classes, lims=(0, 1)):
     
     """
     Run the fgsm attack on the whole test set.
@@ -231,7 +230,7 @@ def run_fgsm(model, test_loader, alpha, kind, temperature,
         loss.backward()
         data_grad = data.grad.data
         
-        perturbed_data = attack_fgsm(data, epsilon, data_grad)
+        perturbed_data = attack_fgsm(data, epsilon, data_grad, lims=lims)
         output = model(perturbed_data)
         final_pred = output.max(1, keepdim=True)[1] # Prediction (perturbated data)
         
