@@ -31,6 +31,7 @@ df_results['alpha'] = round(df_results['alpha'], 3)
 # df = df_results.loc[df_results.alpha.isin(
 #     df_results.alpha.unique()[::2])]
 df = df_results
+df.epsilon = round(df.epsilon, 2)
 
 # Plot 1 : advresarial accuracy as a function of epsilon for several models
 # (alphas), for different methods (kind)
@@ -48,13 +49,14 @@ plt.savefig('adv_acc_methods.png', dpi=300, bbox_inches='tight')
 #     df.append(dict(kind=kind, epsilon=epsilon, acc=subdf["acc"].max()))
 # df_results = pd.DataFrame(df)
 # XXX rm hack
-df = df_results.loc[df_results.alpha.isin(
-    df_results.alpha.unique()[::2])]
+# df = df_results.loc[df_results.alpha.isin(
+#     df_results.alpha.unique()[::2])]
 df = df.loc[df.epsilon.isin(df.epsilon.unique()[::2])]
 df.alpha = round(df.alpha, 2)
-df = df.loc[df.epsilon < .26]
+df.epsilon = round(df.epsilon, 2)
+df = df.loc[df.epsilon < .6]
 p1 = sns.factorplot(data=df, x="alpha", y="acc",  # reducer=np.max,
-                    kind="point", legend="full", hue="kind", col="epsilon")
+                    kind="point", legend="full", hue="kind", col="epsilon", col_wrap=3)
 p1.set(xlabel = "$\\alpha$", ylabel = "Adversarial accuracy")
 # plt.title('Adv accuracy for different values of alpha (methods = ")')
 plt.tight_layout()
