@@ -24,6 +24,7 @@ if results_file.endswith(".csv"):
 else:
     assert results_file.endswith(".pkl")
     df_results = pd.read_pickle(results_file)
+df_results = df_results.loc[df_results.kind.isin(["boltzmann", "standard"])]
 df_results['alpha'] = round(df_results['alpha'], 3)
 
 # # XXX rm hack
@@ -53,7 +54,7 @@ plt.savefig('adv_acc_methods.png', dpi=300, bbox_inches='tight')
 df = df.loc[df.epsilon.isin(df.epsilon.unique()[::2])]
 df.alpha = round(df.alpha, 2)
 df.epsilon = round(df.epsilon, 2)
-# df = df.loc[df.epsilon < .6]
+df = df.loc[df.epsilon < .6]
 p1 = sns.factorplot(data=df, x="alpha", y="acc",  # reducer=np.max,
                     kind="point", legend="full", hue="kind", col="epsilon",
                     col_wrap=3)

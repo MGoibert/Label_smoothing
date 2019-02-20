@@ -217,5 +217,5 @@ for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
                        temperature=temperature))
 df = pd.DataFrame(df)
 results_file = "_results_%s_experiment.csv" % experiment_name
-df.to_pickle(results_file)
+df.to_csv(results_file)
 logging.info("Results written to file: %s" % results_file)
