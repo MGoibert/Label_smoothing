@@ -10,7 +10,6 @@ Created on Fri Feb 15 16:52:47 2019
 
 import sys
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -54,12 +53,12 @@ plt.savefig('adv_acc_methods.png', dpi=300, bbox_inches='tight')
 df = df.loc[df.epsilon.isin(df.epsilon.unique()[::2])]
 df.alpha = round(df.alpha, 2)
 df.epsilon = round(df.epsilon, 2)
-df = df.loc[df.epsilon < .6]
+# df = df.loc[df.epsilon < .6]
 p1 = sns.factorplot(data=df, x="alpha", y="acc",  # reducer=np.max,
-                    kind="point", legend="full", hue="kind", col="epsilon", col_wrap=3)
+                    kind="point", legend="full", hue="kind", col="epsilon",
+                    col_wrap=3)
 p1.set(xlabel = "$\\alpha$", ylabel = "Adversarial accuracy")
 # plt.title('Adv accuracy for different values of alpha (methods = ")')
 plt.tight_layout()
 plt.savefig('adv_acc_all.png', dpi=300, bbox_inches="tight")
 plt.show()
-
