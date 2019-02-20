@@ -40,7 +40,7 @@ def smooth_CE(outputs, labels):
         for i in range(size):
             labels[i] = labels[i].unsqueeze(-1)
             
-    res = 1/size * sum( [ torch.dot(outputs[i], labels[i]) for i in range(size) ] )
+    res = 1. / size * sum( [ torch.dot(torch.log(outputs[i]), labels[i]) for i in range(size) ] )
     return -res
 
 
