@@ -216,6 +216,6 @@ for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
         df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
                        temperature=temperature))
 df = pd.DataFrame(df)
-results_file = "_results_%s_experiment.pkl" % experiment_name
+results_file = "_results_%s_experiment.csv" % experiment_name
 df.to_pickle(results_file)
 logging.info("Results written to file: %s" % results_file)
