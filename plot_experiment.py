@@ -33,10 +33,15 @@ df_results['alpha'] = round(df_results['alpha'], 3)
 df = df_results
 df.epsilon = round(df.epsilon, 2)
 
+if "temperature" in results_file:
+    hue = "temperature"
+else:
+    hue = "kind"
+
 # Plot 1 : advresarial accuracy as a function of epsilon for several models
 # (alphas), for different methods (kind)
 p2 = sns.factorplot(data=df, x="epsilon", y="acc", hue="alpha",
-                    kind="point", col="kind", legend="full")
+                    kind="point", col=hue, legend="full")
 p2.set(xlabel = "$\\epsilon$ (adv. strenght)", ylabel = "Adversarial accuracy")
 # plt.suptitle('Adv accuracy for different values of alpha')
 plt.tight_layout()
@@ -56,7 +61,7 @@ df.alpha = round(df.alpha, 2)
 df.epsilon = round(df.epsilon, 2)
 df = df.loc[df.epsilon < .6]
 p1 = sns.factorplot(data=df, x="alpha", y="acc",  # reducer=np.max,
-                    kind="point", legend="full", hue="kind", col="epsilon",
+                    kind="point", legend="full", hue=hue, col="epsilon",
                     col_wrap=3)
 p1.set(xlabel = "$\\alpha$", ylabel = "Adversarial accuracy")
 # plt.title('Adv accuracy for different values of alpha (methods = ")')
