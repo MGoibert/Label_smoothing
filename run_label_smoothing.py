@@ -5,19 +5,12 @@ Created on Wed Feb 13 14:05:17 2019
 
 @author: m.goibert
 """
-
-
-
-
-
-"""
-Libraries
-"""
-
 from operator import itemgetter
 import time
 import random
 import logging
+
+from sklearn.utils import check_random_state
 
 import torch
 import torch.nn as nn
@@ -44,13 +37,14 @@ random.seed(1)
 np.random.seed(1)
 
 
-def generate_overlap(num_samples, gamma=.3, random_state=None):
-    from sklearn.utils import check_random_state
+def generate_overlap(num_samples, gamma=.3, beta=.6, random_state=None):
+    assert 0. < gamma < 1.
+    assert 0. < beta < 1.
     rng = check_random_state(random_state)
     x = 2 * rng.rand(num_samples) - 1
     y = np.sign(x)
     mask = np.abs(x) <= gamma
-    y[mask] = rng.choice([-1, 1], size=mask.sum())
+    y[mask] = rng.choice([-1, 1], size=mask.sum(), p=[beta, 1. - beta])
     return x[:, None], (y + 1) / 2
 
 
@@ -153,7 +147,6 @@ else:
                              batch_size=1, shuffle=True)
     val_loader = DataLoader(TensorDataset(X_val, y_val),
                               batch_size=1000, shuffle=True)
-
 
 # Convert tensors into test_loader into double tensors
 test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), test_loader.dataset)),
