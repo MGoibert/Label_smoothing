@@ -44,21 +44,24 @@ def run_experiment(alpha, kind, train_loader):
 
 
 # misc
+random_state = 42
 args = parse_cmdline_args()
 n_features = 1
 num_train_samples = 10000
 num_test_samples = 10000
 batch_size = args.batch_size
 learning_rate = args.learning_rate
-gamma = .2
+gamma = .3
 beta = .25
 alphas = np.linspace(0, 1, num=args.num_alphas)
 num_jobs = args.num_jobs
 kinds = ["adversarial", "standard", "boltzmann"]
 
 # prepare data
-X_train, y_train = generate_overlap(num_train_samples, gamma=gamma, beta=beta)
-X_test, y_test = generate_overlap(num_test_samples, gamma=0.)
+X_train, y_train = generate_overlap(num_train_samples, gamma=gamma, beta=beta,
+                                    random_state=random_state)
+X_test, y_test = generate_overlap(num_test_samples, gamma=0.,
+                                  random_state=random_state)
 X_train = torch.DoubleTensor(X_train)
 y_train = torch.LongTensor(y_train.astype(int))
 X_test = torch.DoubleTensor(X_test)
