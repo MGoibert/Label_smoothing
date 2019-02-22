@@ -2,21 +2,27 @@
 """
 import sys
 import logging
+
+import random
 import numpy as np
 import pandas as pd
-
-import torch
-import torch.nn.functional as F
-from torch.utils.data import TensorDataset, DataLoader
 
 from sklearn.utils import check_random_state
 from sklearn.metrics import roc_auc_score
 
 from joblib import Parallel, delayed
 
+import torch
+import torch.nn.functional as F
+from torch.utils.data import TensorDataset, DataLoader
+
 from utils import parse_cmdline_args
 from _utils import train_net, smooth_label, one_hot
 from mlp import MLP
+
+# control random-number generators
+torch.manual_seed(1234)
+random.seed(1234)
 
 
 def generate_overlap(num_samples, gamma=.5, beta=.5, random_state=None):
