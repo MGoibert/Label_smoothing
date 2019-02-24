@@ -130,18 +130,18 @@ One notes that, in the LBLS scheme above,
 
 \section{Theoretical understanding of label smoothing}
 \subsection{An example}
+\label{sec:overlap_example}
 
 Let's derive the effect on the standard accuracy and the adversarial accuracy
 through a simple example.
-
 Let $Y \sim \bern(\pm 1, \gamma)$ (where $\gamma > 1/2$), and
 $$ X|1 \sim \text{Tri}(-1,1,0),\; \quad \quad X|-1 \sim \text{Line}(-1,0),$$
 where $\text{Tri}(-1,1,0)$ is the triangular law with density
 and cumulative distribution function (CDF) given by
 \begin{eqnarray*}
   \begin{split}
-    f_{X|1}(x) &= (x+1)\mathbb{1}_{[0,1]}(x) + (1-x)\mathbb{1}_{[-1,0]}(x), \\
-    F_{X|1}(x) &= \frac{(x+1)^2}{2}\mathbb{1}_{[-1,0]}(x) + \left(1 -
+    f_{X|1}(x) &= (x+1)\mathbb{1}_{[-1,0)}(x) + (1-x)\mathbb{1}_{[0,1]}(x), \\
+    F_{X|1}(x) &= \frac{(x+1)^2}{2}\mathbb{1}_{[-1,0)}(x) + \left(1 -
     \frac{(1-x)^2}{2}\right)\mathbb{1}_{[0,1]}(x)
  \end{split}
 \end{eqnarray*} 
