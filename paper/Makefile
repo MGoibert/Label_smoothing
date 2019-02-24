@@ -4,6 +4,9 @@ all: clean
 		pdflatex main.tex
 		pdflatex main.tex
 
+main:
+	  pdflatex main.tex
+
 clean:
 		rm -f *.aux *.log *.bbl *.blg *.run.xml *.bcf *.out
 		rm -rf auto main.pdf

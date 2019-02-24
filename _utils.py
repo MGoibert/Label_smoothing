@@ -142,33 +142,48 @@ def _has_converged(history, convergence_threshold=1e-4, window_size=5):
 def train_net(net, train_loader, val_data=None, val_loss_func=None,
               learning_rate=0.01, num_epochs=50, patience=5,
               reduce_lr_factor=.75, loss_func=F.cross_entropy,
-              enable_early_stopping=True):
+              enable_early_stopping=True, full_batch_mode=False):
     """
     Train a neural network
     """
     # prepare the optimizer
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    logging.info("Optimizer:")
-    print(optimizer)
-    if val_data is not None:
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='max', patience=patience, verbose=True,
-            factor=reduce_lr_factor)
-        print(scheduler)
-        if val_loss_func is None:
-            val_loss_func = loss_func
+    if full_batch_mode:
+        optimizer = optim.LBFGS(net.parameters(), lr=learning_rate)
+    else:
+        optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+        logging.info("Optimizer:")
+        print(optimizer)
+        if val_data is not None:
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='max', patience=patience, verbose=True,
+                factor=reduce_lr_factor)
+            print(scheduler)
+            if val_loss_func is None:
+                val_loss_func = loss_func
 
     # training loop
     history = {"train": [], "val": []}
     for epoch in range(num_epochs):
         net.train()
         for x_batch, y_batch in tqdm(train_loader):
-            optimizer.zero_grad()
-            y_pred = net(x_batch)
-            loss = loss_func(y_pred, y_batch)
-            loss.backward()
-            optimizer.step()
-            history["train"].append(loss.item())
+            if full_batch_mode:
+                def closure():
+                    optimizer.zero_grad()
+                    y_pred = net(x_batch)
+                    loss = loss_func(y_pred, y_batch)
+                    loss.backward()
+                    return loss
+
+                loss = optimizer.step(closure)
+                history["train"].append(loss.item())
+
+            else:
+                optimizer.zero_grad()
+                y_pred = net(x_batch)
+                loss = loss_func(y_pred, y_batch)
+                loss.backward()
+                optimizer.step()
+                history["train"].append(loss.item())
 
         # eval
         if val_data is not None:

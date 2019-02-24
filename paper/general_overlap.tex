@@ -1,0 +1,40 @@
+\subsection{General theory for overlapping classes}
+Let $X$ be a random variable with law $\mathbb{P}_X$ on a space $\mathcal X$ and let
+$h_{\text{true}}:\mathcal X \rightarrow \{\pm 1\}$ be a measurable function. Let $C \subseteq
+\mathcal X$ be an event with probability $\mathbb{P}(x \in C):=\int_{x \in C}d\mathbb{P}_X(x)
+=\alpha \in (0, 1]$. Let $\beta \in (0, 1)$ be fixed and define a random variable $Y$
+by prescribing the following conditional law $$\mathbb{P}_{Y|x}
+= \begin{cases}\bern(\{\pm 1\};\beta),&\mbox{ if }x \in
+  C,\\\delta_{h(x)},&\mbox{ else.}\end{cases}
+$$
+For a given $x \in \mathcal X$, one should think of the distribution of $Y|x$ as
+a binary measurement on the random variable $X$, which equals $h(x)$ under
+normal circumstances, but degrades to uninformative Bernoulli noise when $X$
+hits the set $C$. Let $B:=\mathcal X\setminus C$, $B_y:=h_{\text{true}}^{-1}(y)\cap
+B = \{x \in B | h(x)=1\}$, and note that $h$ agrees with
+$h_{\text{true}}$ on the event $B$, i.e $h(x)=h_{\text{true}}(x)$ for all $x \in
+B$. Let $h^*(x) = \text{sign}(\mathbb{P}(Y=1|X=x)- 1/2)$ be the Bayes optimal
+classifier, and w.l.o.g suppose $\beta < 1/2$. Then a direct computation yields
+$$
+h^*(x) = \begin{cases}1,&\mbox{ if }x \in B_1,\\-1,&\mbox{
+    else,}\end{cases}
+$$
+Thus $\mathbb{P}(h^*(X)=1|X \in B)=\mathbb{P}(h(X)=1|X \in B)$. Now, one can compute the
+accuracy of the Bayes optimal classifier $h^*$ as
+\begin{eqnarray*}
+  \begin{split}
+    \acc(h)&:=\mathbb{P}(h^*(X)=Y)=(1-\alpha)
+    \mathbb{P}(h^*(X)=h_{\text{true}}(X)|X \in B) + \alpha \mathbb{P}(h^*(X)=Y|X
+    \in C)\\
+   (1-\alpha)\mathbb{P}((h^*(X)=1|X \in B_1)+(h^*(X)=1|X \in B_{-1})) + \alpha \mathbb{P}(Y=-1|X
+    \in C)\\    
+    &=(1-\alpha)(1) + \alpha \mathbb{P}(Y=0|X\in C)=1-\alpha + \alpha(1-\beta) = 1 -
+    \alpha\beta.
+  \end{split}
+\end{eqnarray*}
+Thus no classifier can attain an accuracy larger that $1-\alpha\beta$ on this problem!
+
+\subsubsection{Things fall apart}
+Note that $\acc_\epsilon(h^*) \le 1-\alpha+(1-\beta)\mathbb P_X(d(X,C) \le
+\epsilon)$
+%=1-\alpha\beta-(1-\beta)\mathbb P_X(d(X,C)>\epsilon)$
