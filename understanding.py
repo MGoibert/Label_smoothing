@@ -21,9 +21,10 @@ from _utils import train_net, smooth_label, one_hot
 from mlp import MLP
 
 # control random-number generators
-torch.manual_seed(1234)
-random.seed(1234)
-
+if False:
+    torch.manual_seed(1234)
+    random.seed(1234)
+    np.random.seed(1234)
 
 def generate_overlap(num_samples, gamma=.5, beta=.5, random_state=None):
     assert 0. <= gamma <= 1.
@@ -32,16 +33,17 @@ def generate_overlap(num_samples, gamma=.5, beta=.5, random_state=None):
     x = 2 * rng.rand(num_samples) - 1
     y = (np.sign(x) + 1) / 2
     mask = np.abs(x) <= gamma
-    y[mask] = rng.choice(range(2), size=mask.sum(), p=[beta, 1. - beta])
+    if mask.sum():
+        y[mask] = rng.choice(range(2), size=mask.sum(), p=[beta, 1. - beta])
     return x[:, None], y
 
 
-def run_experiment(alpha, kind, train_loader):
+def run_experiment(alpha, kind, train_loader, **kwargs):
     net = MLP(n_features, output_dim=2)
     loss_func = lambda y_pred, y: F.binary_cross_entropy_with_logits(
         y_pred, smooth_label(y, alpha, y_pred=y_pred, kind=kind))
     net, _ = train_net(net, train_loader, learning_rate=learning_rate,
-                       loss_func=loss_func)
+                       loss_func=loss_func, **kwargs)
     net = net.eval()
     preds = net(X_test).argmax(-1).data.numpy()
     # acc = roc_auc_score(preds, y_test.data.numpy().ravel())
@@ -53,15 +55,15 @@ def run_experiment(alpha, kind, train_loader):
 random_state = 42
 args = parse_cmdline_args()
 n_features = 1
-num_train_samples = 10000
+num_train_samples = 1000
 num_test_samples = 10000
-batch_size = args.batch_size
+batch_size = num_train_samples
 learning_rate = args.learning_rate
-gamma = .3
+gamma = 0
 beta = .25
 alphas = np.linspace(0, 1, num=args.num_alphas)
 num_jobs = args.num_jobs
-kinds = ["adversarial", "standard", "boltzmann"]
+kinds = ["adversarial", "standard", "boltzmann"][1:2]
 
 # prepare data
 X_train, y_train = generate_overlap(num_train_samples, gamma=gamma, beta=beta,
@@ -79,9 +81,9 @@ test_loader = DataLoader(TensorDataset(X_test, y_test),
 
 
 # run experiments in parallel
-results = Parallel(n_jobs=num_jobs)(delayed(run_experiment)(alpha, kind,
-                                                            train_loader)
-                                    for alpha in alphas for kind in kinds)
+results = Parallel(n_jobs=num_jobs)(delayed(run_experiment)(
+    alpha, kind, train_loader, full_batch_mode=True)
+    for alpha in alphas for kind in kinds)
 
 # gather results
 df = []
