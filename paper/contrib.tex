@@ -1,0 +1,213 @@
+\section{Contributions}
+\subsection{Adversarial label smoothing}
+Let $\tv(\cdot\|\cdot)$ be the Total-Variation distance  defined by $\tv(q\|p)
+:= (1/2)\|q-p\|_1$. Let $\hat{P}_n := \frac{1}{n}\sum_{i=1}\delta_{x_i} \otimes
+\delta_{y_i}$ be the empirical distribution of the input-label pairs $(x,y)$ in
+the dataset. For an uncertainty tolerance level $\epsilon>0$, define the
+uncertainty set
+\begin{eqnarray}
+  \begin{split}
+    \mathcal U_\epsilon(\hat{P}_n) &:= \{P_XQ_{Y|X} |
+  \tv(Q_{Y|x}\|\hat{P}_n(\cdot|x)) \le \epsilon,\;\forall x \in \mathcal X\}\\
+  &=\left\{\sum_{i=1}^n(1/n)\delta_{x_i} \otimes q_i | q_i \in \Delta_k,\;
+    \tv(q_i\|\delta_{y_i})\le \epsilon\;\forall i \in [\![n]\!]\right\},
+  \end{split}
+\end{eqnarray}
+made up of joint distributions $Q \in \mathcal P(\mathcal X \times \mathcal Y)$
+on input-label pairs $(x_i,y_i)$, for which the marginal label distribution
+$q_i:=Q_{Y|X=x_i} \in \mathcal P(\mathcal Y)=\Delta_k$ is within  TV distance
+$\le \epsilon$ of the one-hot encoding of the observed label $\delta_{y_i}$. By
+direct computation, one has
+$$
+\tv(q_i\|\delta_{y_i}) = (1/2)\sum_{j=1}^k|q_i(j)-\delta_{y_i}(j)| = (1/2)
+\left(\sum_{j \ne y_i}q_i(j) + 1 - q_i(y_i)\right)=1-q_i(y_i),
+$$
+and so the uncertainty set can be rewritten as
+\begin{eqnarray}
+  \mathcal U_\epsilon(\hat{P}_n)=\left\{\sum_{i=1}^n(1/n)\delta_{x_i} \otimes q_i | q_i \in
+  \Delta_k,\;q_i(y_i)\ge 1 - \epsilon\;\forall i \in [\![n]\!]\right\}.
+\end{eqnarray}
+
+
+
+Now, consider the two-player game
+\begin{eqnarray}
+  \begin{split}
+    \min_{\theta}\max_{Q \in \mathcal U_\epsilon(\hat{P}_n)} \mathbb E_{(x,y)
+      \sim Q}[-\delta_y^T\log(p(\cdot|x;\theta))].
+  \end{split}
+  \label{eq:grand}
+\end{eqnarray}
+Mindful of the previous computations, one has
+\begin{eqnarray}
+  \begin{split}
+    \min_{\theta}\max_{Q \in \mathcal U_\epsilon(\hat{P}_n)} \mathbb E_{(x,y) \sim
+      Q}[-\delta_y^T\log(p(x;\theta))]
+    =\min_{\theta}\frac{1}{n}\sum_{i=1}^n\max_{q_i \in
+      \Delta_k|q_i(y_i) \ge 1-\alpha} -q_i^T\log(p(x_i;\theta)),
+    \end{split}
+\end{eqnarray}
+where  $\alpha := \min(\epsilon,1) \in [0, 1]$. Thanks to Lemma
+\ref{thm:bumbednash} (see Appendix \ref{sec:proofs}), the inner problem in the above
+display has analytic solution given by
+\begin{mdframed}
+  \textbf{Adversarial Label-Smoothing (ALS).}
+\begin{eqnarray}
+  q_i^*(\cdot|\theta) = (1-\alpha) \delta_{y_i} +
+  \alpha\text{ConvHull}(\argmin_{j=1}^kz(j|x_i;\theta))).
+  \label{eq:ls}
+\end{eqnarray}
+\end{mdframed}
+The interpretation is intuitive. $\alpha$ acts as a smoothing parameter.
+If $\alpha = 1$, then the adversarial weights $q^*_i(\cdot|\theta)$ wanders freely
+in the sub-simplex spanned by the smallest components of the logit vector
+$z(\cdot|x_i;\theta)$. If $\alpha=0$, then $q^*_i(\cdot|\theta)=\delta_{y_i}$,
+and we back to the unrobustified problem. Thus \eqref{eq:ls} is a generalization
+of the classical label-smoothing idea ~\citep{labelsmoothing,labelsmoothingbis}\todo{XXX cite
+  goodfellow and clique}. For $0 < \alpha < 1$, $q^*_i(\cdot|\theta)$ is a
+proper convex combination of the two previous cases.
+
+The grand problem \eqref{eq:grand} then reduces to
+\begin{eqnarray}
+  \begin{split}
+    \min_{\theta}\frac{1}{n}\sum_{i=1}^n
+    -q^*_i(\cdot|\theta)^T\log(p(\cdot|x_i;\theta))&=
+    \min_{\theta}\frac{1}{n}\sum_{i=1}^n
+    \text{CrossEntropy}(p(\cdot|x_i;\theta),q^*_i(\cdot|\theta))\\
+    &=\min_{\theta}(1-\alpha)L_n(\theta)+\alpha R_n(\theta),
+    \end{split}
+\end{eqnarray}
+where
+\begin{itemize}
+  \item $L_n(\theta) :=
+    \frac{1}{n}\sum_{i=1}^n\text{CrossEntropy}(p(\cdot|x_i;\theta),\delta_{y_i}) \ge 0$ is
+    the usual loss without label-smoothing, and
+  \item  $R_n(\theta) := \frac{1}{n}\sum_{i=1}^n\max_{j=1}^k
+    -\log(p(j|x_i;\theta)) \ge 0$.
+    \end{itemize}
+The term $R_n(\theta)$ acts as a penalty which implements some kind of
+\textit{logit squeezing}. Indeed, for each data point $x_i$ with true label
+$y_i$, it forces the model to put non-negligible mass on each other label $j \ne
+y_i$. To see this, note that if $p(j|x_i;\theta) < e^{-\gamma}$ for some
+$\gamma > 0$, then $R_n \ge \alpha \gamma$, and $R_n(\theta) \overset{\gamma
+  \rightarrow \infty}{\longrightarrow} \infty$ (provided $\alpha > 0$).
+
+
+\subsection{Boltzmann Label-Smoothing (BLS)}
+According to \eqref{eq:ls}, excluding the special case where several class
+labels have the smallest logit values, adversarial label smoothing thus gives
+weights to only two class labels: the true class label (due to the constraint of
+the model) and the class label which minimizes the logit vector. Adversarial
+labels smoothing thus gives "two-hot" labels rather than really "smoothed"
+labels. Replace \emph{hard-min} in \eqref{eq:ls}  with a \emph{softmin}. This
+leads to what we call \emph{Boltzmann label distribution} (BLS), defined
+by
+$$
+q^{\text{B}}_i = (1- \alpha) \delta_{y_i} + \alpha \text{Boltz}_T(\cdot|x_i;\theta)
+$$
+where
+\begin{eqnarray}
+  \text{Boltz}_T(j|x_i;\theta) = \frac{\exp(-z(j|x_i;\theta)/T)}{\sum_{k=1}^K
+  \exp(-z(k|x_i;\theta)/T)}
+\end{eqnarray}
+is the Boltzmann distribution with energy levels $z(j|x_i;\theta)$ at
+temperature $T>0$.
+We easily check that $q^{\text{B}}(y) > 1- \alpha$ and $q^{\text{B}}$ is a
+probability distribution, thus $q^{\text{B}} \in \mathcal
+U_\epsilon(\hat{P}_n)$. More generally, for any probability distribution $q$ on
+the space of class labels, $(1- \alpha) \delta_y + \alpha q^{\text{B}}$ is a probability
+distribution belonging to $\mathcal U_\epsilon(\hat{P}_n)$.
+
+One notes that, in the LBLS scheme above,
+\begin{itemize}
+\item The low-temperature limit $T \rightarrow 0^+$ corresponds to ALS
+\item The high-temperature limit $T \rightarrow +\infty$ corresponds to standard
+  global label-smoothing
+\end{itemize}
+
+% --------------------------------------------------------------
+% Exemple avec loi triangulaire
+
+\section{Theoretical understanding of label smoothing}
+\subsection{An example}
+\label{sec:overlap_example}
+
+Let's derive the effect on the standard accuracy and the adversarial accuracy
+through a simple example.
+Let $Y \sim \bern(\pm 1, \gamma)$ (where $\gamma > 1/2$), and
+$$ X|1 \sim \text{Tri}(-1,1,0),\; \quad \quad X|-1 \sim \text{Line}(-1,0),$$
+where $\text{Tri}(-1,1,0)$ is the triangular law with density
+and cumulative distribution function (CDF) given by
+\begin{eqnarray*}
+  \begin{split}
+    f_{X|1}(x) &= (x+1)\mathbb{1}_{[-1,0)}(x) + (1-x)\mathbb{1}_{[0,1]}(x), \\
+    F_{X|1}(x) &= \frac{(x+1)^2}{2}\mathbb{1}_{[-1,0)}(x) + \left(1 -
+    \frac{(1-x)^2}{2}\right)\mathbb{1}_{[0,1]}(x)
+ \end{split}
+\end{eqnarray*} 
+and $\text{Line}(-1,0)$ is the law defined by:
+\begin{align*}
+f_{X|-1}(x) &= 2(x+1)\mathbb{1}_{[-1,0]}(x),\\
+F_{X|-1}(x) &= (x+1)^2\mathbb{1}_{[-1,0]}(x) \\
+\end{align*}
+We easily check that $\mathbb{P}(y = 1 | x) = 1$ if $x > 0$ and
+$\displaystyle{\mathbb{P}(y = 1 | x) = \frac{\gamma}{2-\gamma}}$ if $x < 0$, so
+$\forall \, \gamma \in [1/2 , 2/3]$ the Bayes classifier predicts class 1 if and
+only if $x > 0$.
+
+The accuracies of the this classifier are given by:
+\begin{align*}
+  \acc(h) &:= \mathbb{P}_{(x,y)}(h(x)=y) =\mathbb{P}(y=1)\mathbb{P}(x>0|y=1) + \mathbb{P}(y=-1)\mathbb{P}(x<0|y=-1) \\ &= \gamma \frac{1}{2} + (1-\gamma)1 = 1 - \frac{\gamma}{2},
+\end{align*}
+and
+\begin{align*}
+\acc_\epsilon(h) &= \mathbb{P}(h(x+ \Delta x) = y, \forall \, |\Delta x| \leq \epsilon) \\
+&= \mathbb{P}(y=1)\mathbb{P}(x - \epsilon > 0 | y=1) + \mathbb{P}(y=-1)\mathbb{P}(x + \epsilon < 0 | y=-1) \\
+&= \left( 1 - \frac{\gamma}{2} \right) (1- \epsilon)^2
+\end{align*}
+
+
+We now study the behaviour of the ALS classifier with parameter $\alpha$. We
+note $p_{-1}$ and $p_1$ the logit values for class -1 and 1 respectively. Starting
+from the Bayes classifier, we have $p_{-1} < p_1$ if $x > 0$ and $p_{-1} > p_1$ if $x
+< 0$. Recall that the smoothing procedure try to put as much weight as possible
+on the smallest logit while respecting the constraint that the true label cannot
+receive a weight smaller than $1-\alpha$. Thus:
+\begin{itemize}
+  \item Case (1): $x > 0$ and $y = 1$: we will obtain $q_0 = \alpha, q_1 = 1-\alpha$
+  \item Case (2): $x > 0$ and $y = -1$: we will obtain $q_0 = 1, q_1 = 0$
+  \item Case (3): $x < 0$ and $y = 1$: we will obtain $q_0 = 0, q_1 = 1$
+  \item Case (4): $x < 0$ and $y = -1$: we will obtain $q_0 = 1-\alpha, q_1 = \alpha$
+\end{itemize}
+Let's compute the probability to be in each case described above:
+\begin{align*}
+\mathbb{P}(1) &= \mathbb{P}(y=1)\mathbb{P}(x>0|y=1) = \gamma / 2\\
+\mathbb{P}(2) &= \mathbb{P}(y=-1)\mathbb{P}(x>0|y=-1) = 0 \\
+\mathbb{P}(3) &= \mathbb{P}(y=1)\mathbb{P}(x<0|y=1) = \gamma / 2\\
+\mathbb{P}(4) &= \mathbb{P}(y=-1)\mathbb{P}(x<0|y=-1) = 1-\gamma \\
+\end{align*}
+We can now compute the expected value of the loss:
+\begin{eqnarray*}
+\begin{split}
+  \mathbb{E}_{X,Y}(l(\theta)) &= \int_{-1}^1 \mathbb{P}(1) \left( \alpha \ln
+    (p_{-1})  + (1- \alpha)\ln(p_1) \right) + \mathbb{P}(3)\ln(p_1) +
+  \mathbb{P}(4)\left( (1-\alpha) \ln(p_{-1}) + \alpha \ln(p_1) \right) \,
+  \text{d}x \\
+&= C_0(\alpha) \int_{-1}^1 \ln \left( \frac{1}{1 + \exp((\theta_1 - \theta_0)x +
+    b_1 - b_0)} \right) \, \text{d}x + \\
+& \; (1 - C_0(\alpha)) \int_{-1}^1 \left( \frac{1}{1 + \exp((\theta_0 -
+    \theta_1)x + b_0 - b_1)} \right) \, \text{d}x \, , \; C_0(\alpha) = 1 -
+\alpha - \left( 1 - \frac{3}{2} \alpha \right) \\
+& = C_0(\alpha) \int_{-1}^1 \ln \left( \frac{1}{1 + \exp(ax+b)} \right) \,
+\text{d}x + \\
+& \; (1-C_0(\alpha)) \int_{-1}^1 \ln\left( \frac{1}{1 + \exp(-ax-b)} \right) \,
+, \; a = \theta_1 - \theta_0 ,  b = b_1 - b_0 \\
+& = C_0(\alpha) \frac{1}{a} \left[ \li_2( - \exp(a+b) ) - \li_2( - \exp(-a+b) )
+\right] + \\
+&(1-C_0(\alpha)) \frac{1}{a} \left[ \li_2( - \exp(a-b) ) - \li_2( - \exp(-a-b) )
+\right],
+\end{split}
+\end{eqnarray*}
+where $\li_2(z) := \sum_{m=1}^\infty z^m/m^2$ is a \emph{dilogarithm} function.
+
+\input{general_overlap.tex}

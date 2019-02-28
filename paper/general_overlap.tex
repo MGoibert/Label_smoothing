@@ -1,0 +1,188 @@
+\section{General theory for Overlapping Otherwise Separable classes (OOSe)}
+Let $\mathcal X$ be a measurable space
+% and let $\mathbb P$ be a probability distribution on the product space
+% $\mathcal X \times \{\pm 1\}$,
+and let $h_{\text{true}}:\mathcal X \rightarrow \{\pm 1\}$ be a measurable
+function. Let $X$ be a random variable on $\mathcal X$ and $Y$ be a random
+variable on $\{\pm 1\}$ such that the joint distribution of $(X,Y)$ is $\mathbb
+P$. Let $C$ be a measurable subset of $\mathcal X$ and define
+$\alpha:=\mathbb{P}(X \in C)$. Finally, define $\beta := \mathbb P(Y=1|X\in C)$
+and $B:=\mathcal X\setminus C$. Suppose the following conditions hold
+
+\begin{assumption}[Overlapping Otherwise Separable (OOSe)]
+\begin{eqnarray}
+  \begin{split}
+    &\mathbb P(Y=y|X=x)=\delta_{h_{\text{true}}(x)}(y), \forall x \in B,\\    
+    &\mathbb P(Y=1|X=x) < 1/2,\;\forall x \in C.
+  \end{split}
+\end{eqnarray}
+\label{thm:overlap_assumption}
+\end{assumption}
+\begin{mdframed}
+  \textbf{The elephant in the room.}
+  Intuitively, for a given $x \in \mathcal X$, one should think of the
+distribution of $Y|x$ as a binary measurement on the random variable $X$, which
+equals $h(x)$ under normal circumstances, but degrades to $\bern(\{\pm
+1\};\beta)$ noise when $X$ hits the set $C$. Thus $C$ should be thought of as
+``large'' (according to how $\alpha$ is big) set of examples with noisy /
+overlapping labels.
+\end{mdframed}
+
+\subsection{Bayes optimal error rate}
+We now show that the Bayes optimal
+error classification problem defined by the joint distribution $\mathbb P$ is
+$\alpha\beta$. Indeed, let $h^*(x) = \text{sign}(\mathbb{P}(Y=1|X=x)- 1/2)$ be
+the Bayes optimal classifier. A direct computation yields
+\begin{eqnarray}
+  \label{eq:bayesh}
+h^*(x) = \begin{cases}1,&\mbox{ if }x \in B\text{ and
+  }h_{\text{true}}(x)=1,\\-1,&\mbox{ else.}\end{cases}
+\end{eqnarray}
+Note that $h^*$ agrees perfectly with $h$ on the set $B$, i.e
+$h^*(x)=h_{\text{true}}(x),\;\forall x \in B$. Now, one can compute the
+accuracy of the Bayes optimal classifier $h^*$ as
+\begin{eqnarray*}
+  \begin{split}
+    \acc(h)&:=\mathbb{P}(h^*(X)=Y)=(1-\alpha)
+    \mathbb{P}(h^*(X)=h_{\text{true}}(X)|X \in B) + \alpha \mathbb{P}(h^*(X)=Y|X
+    \in C)\\
+    &=(1-\alpha)(1) + \alpha \mathbb{P}(Y=-1|X \in C)=1-\alpha + \alpha
+    \mathbb{P}(Y=-1|X\in C)\\
+    &=1-\alpha + \alpha(1-\beta)= 1 - \alpha\beta=1-\mathbb P(X \in C,Y=1).
+  \end{split}
+\end{eqnarray*}
+Thus no classifier can attain an accuracy larger than $1-\alpha\beta$ on this
+problem! BTW, a simple application of Bayes rule
+\begin{eqnarray}
+  \alpha\beta=\mathbb P(X \in C)\mathbb P(Y=1|X\in C)
+  =\mathbb P(X \in C,Y=1)
+  =\mathbb P(Y=1) \mathbb P(X \in C|Y=1).
+\end{eqnarray}
+
+\subsection{Bounds on adversarial robustness of Bayes optimal classifier}
+Suppose $\mathcal X=(\mathcal X,d)$ is a  metric space and recall the
+definition of the sets $C$ and $B$ above. Let $d(x,B):=\inf_{x' \in B}d(x,x')$
+denote the distance of a point $x \in \mathcal X$ from a subset $A$ of
+$\mathcal X$.
+Note that $d(x,A_1 \cup A_2) \le \min(d(x,A_2),d(x,A_2))$ and $d(x,A_1 \cap A_2)
+\ge \max(d(x,A_2),d(x,A_2))$.
+
+For a measurable function $h:\mathcal X \rightarrow \{\pm 1\}$ (aka a classifier)
+and for any $y \in \{\pm 1\}$, define $B_y(h) = \{x \in \mathcal X | h(x) \ne
+y\}$ and observe that the adversarial robustness accuracy of $h$ on the class
+$y$ can be written as $\acc_\epsilon(h|y)=\mathbb P_{X|y}(d(X,B_y(h)) \ge
+\epsilon)$. Also note that there is a one-to-one correspondence between a
+classifier $h$ and the set $B_1(h)$ (or $B_{-1}(h)$). At a fixed level of
+standard accuracy, finding the most robustness classifier then amounts to
+finding the surface-minimizing shape $B_1(h)$ in the measure space $(\mathcal X,
+\mathbb P_{X|1})$. This is a purely geometric problem!
+\begin{mdframed}
+  \textbf{The grand schema of things.}
+  Lemma \ref{thm:bayesrob} below is the first in a series which will give us
+  powerful backdoors for understanding the link between class overlap,
+  label-smoothing, and adversarial robustness. Also, we can already smell
+  ``measure concentration'' in the air, and so one could hope for adversarial
+  robustness ``No Free Lunch'' theorems (in the spirit of
+  ~\citep{dohmatob2018limitations}) for Bayes optimal classifiers and nearest
+  neighbor classifiers...
+\end{mdframed}
+
+
+\begin{lemma}
+For every $\epsilon > 0$, the adversarial robustness accuracy of the Bayes
+optimal classifier is bounded as follows
+\begin{itemize}
+\item $\acc_\epsilon(h^*|-1) \ge \mathbb P_{X|-1}(d(X,B)\ge \epsilon)$, and
+\item $\acc_\epsilon(h^*|1) \le \mathbb P_{X|1}(d(X,C)\ge \epsilon)$.
+\end{itemize}
+Moreover, these inequalities are equalities if $\mathbb P(h_{\text{true}}(X)=-1|X
+\in C)=1$.
+\label{thm:bayesrob}
+\end{lemma}
+\begin{proof}
+  Now, by
+  formula \eqref{eq:bayesh} defining $h^*$, one has $B_{-1}(h^*) \subseteq B$
+  and $C \subseteq B_1(h^*)$, and so
+  \begin{eqnarray}
+    d(x,B_{-1}(h^*)) \ge d(x,B)\text{ and }d(x,B_1(h^*)) \le d(x,C),\;\forall x
+    \in \mathcal X
+  \label{eq:dist}
+  \end{eqnarray}
+  Thus
+  \begin{eqnarray*}
+    \begin{split}
+    \acc_\epsilon(h^*|-1)&=\mathbb P_{X|-1}(d(X,B_{-1}(h^*)) \ge \epsilon) \ge
+    \mathbb P_{X|-1}(d(X,B)\ge \epsilon),\text{ and}\\
+    \acc_\epsilon(h^*|1)&=\mathbb P_{X|1}(d(X,B_{1}(h^*)) \ge \epsilon) \le
+    \mathbb P_{X|1}(d(X,C)\ge \epsilon).
+    \end{split}
+  \end{eqnarray*}
+
+  Finally, if $\mathbb P(h_{\text{true}}(X)=-1|X \in C)=1$, then inequalities
+  are actually equalities almost surely, and so the above inequalities for the
+  adversarial robustness accuracies are also equalities.
+\end{proof}
+
+\subsubsection{Applications (special cases)}
+\paragraph*{The example from section \ref{sec:overlap_example} revisited.} Lets
+demonstrate a another approach to obtain the results from the example in section
+\ref{sec:overlap_example}. Using the above reasoning, one can immediately
+recover the result $\acc(h)=1-\gamma/2$. Indeed, in that example, one had
+\begin{itemize}
+\item $\mathcal X = [-1,1]$, $C=[-1,0)$, $B=[0,1]$, $h=\text{sign}(\cdot)$.
+\item For all $x \in C$, using Bayes rule, we have
+  \begin{eqnarray*}
+    \begin{split}
+      \mathbb P(Y=1|X=x) &= \frac{\gamma f_{X|1}(x)}{\gamma
+    f_{X|1}(x)+(1-\gamma)f_{X|-1}(x)}=\frac{\gamma (1+x)}{\gamma
+    (1+x)+2(1-\gamma)(1+x)}\\
+  &=\gamma/(2-\gamma) \in [1/3,1/2],\text{ since }\gamma \in [1/2,2/3].
+\end{split}
+  \end{eqnarray*}
+\end{itemize}
+Thus Assumption \eqref{thm:overlap_assumption} is met. Still using Bayes rule,
+one computes
+$$
+\alpha:=\mathbb P(X \in C)=\mathbb P(X < 0) = \gamma
+F_{X|1}(0)+(1-\gamma)F_{X|-1}(0)=\gamma/2 + (1-\gamma)=1-\gamma/2.
+$$
+Likewise,
+$$
+\beta := \mathbb P(Y=1|X<0)=\frac{\gamma\mathbb
+  P(X<0|Y=1)}{\mathbb P(X<0)}=(\gamma/2)/\alpha=\gamma/(2-\gamma),
+$$
+and $\alpha\beta=\alpha(\gamma/2)/\alpha=\gamma/2$.
+$\therefore \acc(h^*)=1-\alpha\beta=1-\gamma/2$.
+
+As regards adversarial robustness accuracy, consider  the absolute value metric
+$d(x,x'):=|x-x'|$ on $\mathcal X:=[-1,1]$. For all $x \in \mathcal X$, one
+easily computes $d(x,C)=x\mathbb
+1_{[0,1]}(x)=(x)_+$ and $d(x,B)=-x\mathbb 1_{[-1, 0]}(x)=(-x)_+$.
+For every $\epsilon \ge 0$, invoking Lemma \ref{thm:bayesrob} then gives 
+\begin{eqnarray*}
+  \begin{split}
+    &\acc_\epsilon(h^*|1)=\mathbb P_{X|1}(d(x,C) \ge \epsilon)=\int_{x \in \mathcal X,
+      d(x,C)\ge\epsilon}f_{X|1}(x)dx\\
+    &=\int_{x \in [-1, 1],\;(x)_+\ge\epsilon}f_{X|1}(x)dx
+    =\int_{\epsilon}^1f_{X|1}(x)dx=\int_{\epsilon}^1(1-x)dx\\
+    &=1-1^2/2 - (\epsilon - \epsilon^2/2)= (1-\epsilon)^2/2,
+\end{split}
+  \end{eqnarray*}
+and likewise
+\begin{eqnarray*}
+  \begin{split}  
+    &\acc_\epsilon(h^*|-1)=\mathbb P_{X|-1}(d(x,B) \ge \epsilon)=\int_{x \in
+      \mathcal X, d(x,B)\ge\epsilon}f_{X|-1}(x)dx\\
+    &=\int_{x \in [-1, 1],\;(-x)_+\ge\epsilon}f_{X|-1}(x)dx
+    =\int_{-1}^{-\epsilon}f_{X|-1}(x)dx=\int_{-1}^{-\epsilon}2(1+x)dx\\
+    &= -2\epsilon+\epsilon^2+2-1 = (1-\epsilon)^2.
+\end{split}
+\end{eqnarray*}
+Furthermore, one can then compute the total adversarial robustness accuracy as
+$$\acc_\epsilon(h)=\gamma(1-\epsilon)^2/2 + (1  - \gamma)(1-\epsilon)^2
+=(1-\gamma/2)(1-\epsilon)^2,
+$$
+which is precisely the expression obtained ``manually'' in
+\ref{sec:overlap_example}.
+
+%=1-\alpha\beta-(1-\beta)\mathbb P_X(d(X,C)>\epsilon)$
