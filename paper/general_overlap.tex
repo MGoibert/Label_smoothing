@@ -8,6 +8,7 @@ variable on $\{\pm 1\}$ such that the joint distribution of $(X,Y)$ is $\mathbb
 P$. Let $C$ be a measurable subset of $\mathcal X$ and define
 $\alpha:=\mathbb{P}(X \in C)$. Finally, define $\beta := \mathbb P(Y=1|X\in C)$
 and $B:=\mathcal X\setminus C$. Suppose the following conditions hold
+
 \begin{assumption}[Overlapping Otherwise Separable (OOSe)]
 \begin{eqnarray}
   \begin{split}
@@ -66,11 +67,15 @@ $\mathcal X$.
 Note that $d(x,A_1 \cup A_2) \le \min(d(x,A_2),d(x,A_2))$ and $d(x,A_1 \cap A_2)
 \ge \max(d(x,A_2),d(x,A_2))$.
 
-For measurable function $h:\mathcal X \rightarrow \{\pm 1\}$ and for any $y \in
-\{\pm 1\}$, define $B_y(h) = \{x \in \mathcal X | h(x) \ne y\}$ and observe
-that the adversarial robustness accuracy of $h$ on the class $y$ can be written as
-$\acc_\epsilon(h|y)=\mathbb P_{X|y}(d(X,B_y(h)) \ge \epsilon)$.
-
+For a measurable function $h:\mathcal X \rightarrow \{\pm 1\}$ (aka a classifier)
+and for any $y \in \{\pm 1\}$, define $B_y(h) = \{x \in \mathcal X | h(x) \ne
+y\}$ and observe that the adversarial robustness accuracy of $h$ on the class
+$y$ can be written as $\acc_\epsilon(h|y)=\mathbb P_{X|y}(d(X,B_y(h)) \ge
+\epsilon)$. Also note that there is a one-to-one correspondence between a
+classifier $h$ and the set $B_1(h)$ (or $B_{-1}(h)$). At a fixed level of
+standard accuracy, finding the most robustness classifier then amounts to
+finding the surface-minimizing shape $B_1(h)$ in the measure space $(\mathcal X,
+\mathbb P_{X|1})$. This is a purely geometric problem!
 \begin{mdframed}
   \textbf{The grand schema of things.}
   Lemma \ref{thm:bayesrob} below is the first in a series which will give us
@@ -90,15 +95,20 @@ optimal classifier is bounded as follows
 \item $\acc_\epsilon(h^*|-1) \ge \mathbb P_{X|-1}(d(X,B)\ge \epsilon)$, and
 \item $\acc_\epsilon(h^*|1) \le \mathbb P_{X|1}(d(X,C)\ge \epsilon)$.
 \end{itemize}
-Moreover, this inequalities are equalities if $\mathbb P(h_{\text{true}}(X)=-1|X
+Moreover, these inequalities are equalities if $\mathbb P(h_{\text{true}}(X)=-1|X
 \in C)=1$.
 \label{thm:bayesrob}
 \end{lemma}
 \begin{proof}
   Now, by
   formula \eqref{eq:bayesh} defining $h^*$, one has $B_{-1}(h^*) \subseteq B$
-  and $C \subseteq B_1(h^*)$, and so $d(x,B_{-1}(h^*)) \ge d(x,B)$ and
-  $d(x,B_1(h^*)) \le d(x,C)$ for every $x \in \mathcal X$. Thus
+  and $C \subseteq B_1(h^*)$, and so
+  \begin{eqnarray}
+    d(x,B_{-1}(h^*)) \ge d(x,B)\text{ and }d(x,B_1(h^*)) \le d(x,C),\;\forall x
+    \in \mathcal X
+  \label{eq:dist}
+  \end{eqnarray}
+  Thus
   \begin{eqnarray*}
     \begin{split}
     \acc_\epsilon(h^*|-1)&=\mathbb P_{X|-1}(d(X,B_{-1}(h^*)) \ge \epsilon) \ge
@@ -106,7 +116,11 @@ Moreover, this inequalities are equalities if $\mathbb P(h_{\text{true}}(X)=-1|X
     \acc_\epsilon(h^*|1)&=\mathbb P_{X|1}(d(X,B_{1}(h^*)) \ge \epsilon) \le
     \mathbb P_{X|1}(d(X,C)\ge \epsilon).
     \end{split}
-    \end{eqnarray*}
+  \end{eqnarray*}
+
+  Finally, if $\mathbb P(h_{\text{true}}(X)=-1|X \in C)=1$, then inequalities
+  are actually equalities almost surely, and so the above inequalities for the
+  adversarial robustness accuracies are also equalities.
 \end{proof}
 
 \subsubsection{Applications (special cases)}
@@ -159,7 +173,7 @@ and likewise
   \begin{split}  
     &\acc_\epsilon(h^*|-1)=\mathbb P_{X|-1}(d(x,B) \ge \epsilon)=\int_{x \in
       \mathcal X, d(x,B)\ge\epsilon}f_{X|-1}(x)dx\\
-    &=\int_{x \in [-1, 1],\;(-x)_+\ge\epsilon}2(1+x)dx
+    &=\int_{x \in [-1, 1],\;(-x)_+\ge\epsilon}f_{X|-1}(x)dx
     =\int_{-1}^{-\epsilon}f_{X|-1}(x)dx=\int_{-1}^{-\epsilon}2(1+x)dx\\
     &= -2\epsilon+\epsilon^2+2-1 = (1-\epsilon)^2.
 \end{split}
