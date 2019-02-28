@@ -39,8 +39,7 @@ def smooth_CE(outputs, labels):
     if labels[0].dim() == 0:
         for i in range(size):
             labels[i] = labels[i].unsqueeze(-1)
-            
-    res = 1/size * sum( [ torch.dot(torch.log(outputs[i])], labels[i]) for i in range(size) ] )
+    res = 1. / size * sum( [ torch.dot(torch.log(outputs[i]), labels[i]) for i in range(size) ] )
     return -res
 
 
