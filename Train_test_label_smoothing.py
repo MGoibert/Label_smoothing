@@ -40,7 +40,7 @@ def smooth_CE(outputs, labels):
         for i in range(size):
             labels[i] = labels[i].unsqueeze(-1)
             
-    res = 1/size * sum( [ torch.dot(outputs[i], labels[i]) for i in range(size) ] )
+    res = 1/size * sum( [ torch.dot(torch.log(outputs[i])], labels[i]) for i in range(size) ] )
     return -res
 
 
@@ -53,7 +53,8 @@ def one_hot(y, num_classes=None):
     One hot encoding
     """
     if num_classes is None:
-        num_classes = y.max()
+        classes, _ = y.max(0)
+        num_classes = (classes.max() + 1).item()
     if y.dim()>0:
         y_ = torch.zeros(len(y), num_classes)
     else :
@@ -76,13 +77,17 @@ def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
     if alpha > 0.:
         if kind == "standard":
             salt = torch.ones_like(y_)
-            salt = salt / (salt.sum(-1)-1).unsqueeze(-1)
+            salt = (1-one_hot(y, num_classes=num_classes))*salt/(salt.sum(-1)-1).unsqueeze(-1)
         elif kind == "adversarial":
             bad_values, _ = y_pred.min(dim=-1)
             salt = (y_pred == bad_values.unsqueeze(-1)).double()
             salt = salt / salt.sum(-1).unsqueeze(-1)
         elif kind == "boltzmann":
-            salt = F.softmax(-y_pred / temperature, dim=-1)
+            #salt = F.softmax(-y_pred / temperature, dim=-1)
+            a = torch.gather(y_pred,1,y.unsqueeze(-1))
+            b =(y_pred != a).double()* y_pred
+            b[b==0] = float('inf')
+            salt = F.softmax(-b / temperature, dim=-1)
         else:
             raise NotImplementedError(kind)
         salt = salt * alpha
@@ -111,7 +116,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         - the accuracy on the validation set
     """
     
-    optimizer = optim.SGD(model.parameters(), lr=1.75)
+    optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=0.1)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='max', patience=5, verbose=True,
@@ -200,10 +205,27 @@ def attack_fgsm(data, epsilon, data_grad, lims=(0, 1)):
 
 
 # -----------------------
+
+
+def attack_triangular(data, epsilon, r):
+    
+    """
+    Run the optimal attack on the Triangular example (linear model)
+    """
+    
+    perturbed_data = data - epsilon*(data.item() >= -r.item()) + epsilon*(data.item() < -r.item())
+    perturbed_data = torch.clamp(perturbed_data, lims=(0, 1))
+    
+    return perturbed_data
+
+
+
+# -----------------------
     
 
 def run_fgsm(model, test_loader, alpha, kind, temperature,
-             epsilon, loss_func, num_classes, lims=(0, 1)):
+             epsilon, loss_func, num_classes=None, lims=(0, 1),
+             method_attack=None):
     
     """
     Run the fgsm attack on the whole test set.
@@ -223,14 +245,22 @@ def run_fgsm(model, test_loader, alpha, kind, temperature,
         
         if init_pred.item() != target.item():
             continue # If the model is already wrong, continue
+            
         
-        # Compute the gradient of the loss with respect to the data
-        loss = loss_func(output, target_smooth)
-        model.zero_grad()
-        loss.backward()
-        data_grad = data.grad.data
+        if method_attack == None:
+            loss = loss_func(output, target_smooth)
+            model.zero_grad()
+            loss.backward()
+            data_grad = data.grad.data
+            perturbed_data = attack_fgsm(data, epsilon, data_grad)
+            
+        elif method_attack == "triangular":
+            theta = [0,0]
+            for i, p in enumerate(model.parameters()):
+                theta[i] = p.data[1]-p.data[0]
+            r = theta[1]/theta[0]
+            perturbed_data = attack_triangular(data, epsilon, r)
         
-        perturbed_data = attack_fgsm(data, epsilon, data_grad, lims=lims)
         output = model(perturbed_data)
         final_pred = output.max(1, keepdim=True)[1] # Prediction (perturbated data)
         
