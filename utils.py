@@ -53,6 +53,12 @@ def parse_cmdline_args():
     parser.add_argument(
         '--num_jobs', type=int, default=1,
         help="number of jobs to spawn for the experiment")
+    parser.add_argument(
+        '--num_gammas', type=int, default=1,
+        help="number of gammas for triangular experiment")
+    parser.add_argument(
+        '--num_samples', type=int, default=10000,
+        help="number of samples for triangular experiment")
 
     return parser.parse_args()
 
