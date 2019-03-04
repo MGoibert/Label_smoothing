@@ -5,6 +5,12 @@ Created on Wed Feb 13 14:05:17 2019
 
 @author: m.goibert
 """
+
+
+"""
+Libraries
+"""
+
 from operator import itemgetter
 import time
 import random
@@ -20,16 +26,18 @@ import torch.nn.functional as F
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from joblib import delayed, Parallel
 
-# os.chdir("/Users/m.goibert/Documents/Criteo/Code/LS_good_version")
-# os.getcwd()
+
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
                                         attack_fgsm, run_fgsm)
 from utils import parse_cmdline_args
 from lenet import LeNet
+
 
 # Change precision tensor
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -37,19 +45,9 @@ random.seed(1)
 np.random.seed(1)
 
 
-def generate_overlap(num_samples, gamma=.3, beta=.6, random_state=None):
-    assert 0. < gamma < 1.
-    assert 0. < beta < 1.
-    rng = check_random_state(random_state)
-    x = 2 * rng.rand(num_samples) - 1
-    y = np.sign(x)
-    mask = np.abs(x) <= gamma
-    y[mask] = rng.choice([-1, 1], size=mask.sum(), p=[beta, 1. - beta])
-    return x[:, None], (y + 1) / 2
-
 
 """
-Model
+Models
 """
 
 # Model
@@ -71,8 +69,16 @@ class MLPNet(nn.Module):
     def __repr__(self):
         return "MLP"
 
+
+
+"""
+Environment and datastets
+"""
+
 ### Parse command-line arguments
 args = parse_cmdline_args()
+
+
 ### Dataset
 # Import MNIST
 root = './data'
@@ -90,7 +96,19 @@ for i, x in enumerate(test_set):
     else:
         test.append(x)
 
-# Running the experiement
+train_loader = torch.utils.data.DataLoader(dataset=train_set,
+                                        batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
+                                          shuffle=True)
+val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
+                                             shuffle=True)
+
+# Convert tensors into test_loader into double tensors
+test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), test_loader.dataset)),
+                          map(itemgetter(1), test_loader.dataset) ))
+
+
+# Parameters
 num_jobs = args.num_jobs
 loss_func = smooth_CE
 num_classes = 10
@@ -105,7 +123,7 @@ if experiment_name == "temperature":
 else:
     temperatures = [0.1]
 
-lims = 0, 1
+lims = -0.5, 0.5
 
 # define what device we are using
 cuda = torch.cuda.is_available()
@@ -113,44 +131,7 @@ logging.info("CUDA Available: {}".format(cuda))
 device = torch.device("cuda" if cuda else "cpu")
 
 
-# XXX for ML Big Days presentation
-presentation_mode = True
 
-if presentation_mode:
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                               batch_size=batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
-                                          shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
-                                             shuffle=True)
-else:
-    from sklearn.model_selection import train_test_split
-    from torch.utils.data import TensorDataset, DataLoader
-    from mlp import MLP as MLPNet
-    X, y = generate_overlap(10000)
-    lims = -1, 1
-    train_size = .6
-    num_classes = 2
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, train_size=.6)
-    X_test, X_val, y_test, y_val = train_test_split(
-        X_test, y_test, train_size=.6)
-    X_train = torch.DoubleTensor(X_train)
-    y_train = torch.LongTensor(y_train.astype(int))
-    X_val = torch.DoubleTensor(X_val)
-    y_val = torch.LongTensor(y_val.astype(int))
-    X_test = torch.DoubleTensor(X_test)
-    y_test = torch.LongTensor(y_test.astype(int))
-    train_loader = DataLoader(TensorDataset(X_train, y_train),
-                              batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(TensorDataset(X_test, y_test),
-                             batch_size=1, shuffle=True)
-    val_loader = DataLoader(TensorDataset(X_val, y_val),
-                              batch_size=1000, shuffle=True)
-
-# Convert tensors into test_loader into double tensors
-test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), test_loader.dataset)),
-                          map(itemgetter(1), test_loader.dataset) ))
 
 """
 Running
@@ -158,18 +139,17 @@ Running
 
 def run_experiment(alpha, kind, epsilons, temperature=None):
     if use_cnn:
-        net = LeNet()
+        net0 = LeNet()
         # load the pretrained net
         pretrained_net = "lenet_mnist_model.pth"
-        net.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
+        net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
     else:
-        net = MLPNet()
-    net = net.to(device)
+        net0 = MLPNet()
+    net0 = net0.to(device)
 
     logging.info("alpha = {}".format(alpha))
-    #optimizer = optim.SGD(model.parameters(), lr=1.75) 
     net, loss_history, acc_tr = train_model_smooth(
-        net, train_loader, val_loader, loss_func, num_epochs, alpha = alpha,
+        net0, train_loader, val_loader, loss_func, num_epochs, alpha = alpha,
         kind = kind, num_classes = num_classes, temperature = temperature)
 
     logging.info("Accuracy (training) = %g " % acc_tr)
@@ -181,7 +161,8 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         logging.info("epsilon = %s" % epsilon)
         start_time = time.time()
         acc_adv, ex_adv = run_fgsm(net, test_loader, alpha, kind, temperature,
-                                   epsilon, loss_func, num_classes, lims=lims)
+                                   epsilon, loss_func, num_classes, lims=lims,
+                                   method_attack=None)
         accuracy_adv.append(acc_adv)
         end_time = time.time()
         delta_time = (end_time - start_time)
@@ -196,6 +177,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 # XXX Newer versions produce the error:
 # XXX RuntimeError: Expected object of scalar type Float but got scalar type
 # XXX Double for argument #4 'mat1'
+
 df = []
 jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
         for temperature in temperatures]
@@ -210,5 +192,7 @@ for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
                        temperature=temperature))
 df = pd.DataFrame(df)
 results_file = "_results_%s_experiment.csv" % experiment_name
-df.to_csv(results_file)
+df.to_csv(results_file, sep=",")
 logging.info("Results written to file: %s" % results_file)
+
+

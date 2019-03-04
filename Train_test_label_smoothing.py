@@ -213,7 +213,7 @@ def attack_triangular(data, epsilon, r):
     """
     
     perturbed_data = data - epsilon*(data.item() >= -r.item()) + epsilon*(data.item() < -r.item())
-    perturbed_data = torch.clamp(perturbed_data, lims=(0, 1))
+    perturbed_data = torch.clamp(perturbed_data, -1, 1)
     
     return perturbed_data
 
@@ -251,7 +251,7 @@ def run_fgsm(model, test_loader, alpha, kind, temperature,
             model.zero_grad()
             loss.backward()
             data_grad = data.grad.data
-            perturbed_data = attack_fgsm(data, epsilon, data_grad)
+            perturbed_data = attack_fgsm(data, epsilon, data_grad, lims=lims)
             
         elif method_attack == "triangular":
             theta = [0,0]
