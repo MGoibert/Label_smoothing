@@ -36,7 +36,7 @@ from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
                                         attack_fgsm, run_fgsm)
 from utils import parse_cmdline_args
-from lenet import LeNet
+from lenet import LeNet, ResNet18,
 
 
 # Change precision tensor and set seed
@@ -72,10 +72,10 @@ class MLPNet(nn.Module):
     def __repr__(self):
         return "MLP"
 
-# CNN for CIFAR10
 
+# LeNet model for CIFAR10
 
-class NetCifar(nn.Module):
+class LeNetCifar(nn.Module):
 
     def __init__(self):
         super(NetCifar, self).__init__()
@@ -111,6 +111,7 @@ dataset = args.dataset
 if dataset == "MNIST":
 
     # -------------- Import MNIST
+
     root = './data'
     batch_size = args.batch_size
     trans = transforms.Compose(
@@ -138,7 +139,7 @@ if dataset == "MNIST":
 
     # Convert tensors into test_loader into double tensors
     test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
-        test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
+                test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
     # Limit values for X
     lims = -0.5, 0.5
 
@@ -166,7 +167,7 @@ elif dataset == "CIFAR10":
             test.append(x)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                            batch_size=batch_size, shuffle=True)
+                                               batch_size=batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
                                               shuffle=True)
     val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
@@ -174,7 +175,7 @@ elif dataset == "CIFAR10":
 
     # Convert tensors into test_loader into double tensors
     test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
-        test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
+                test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
     # Limit values for X
     lims = -1, 1
     # Name of classes
@@ -211,15 +212,17 @@ Running
 
 
 def run_experiment(alpha, kind, epsilons, temperature=None):
-    if model == "MNIST_conv":
+    if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
         # load the pretrained net
         pretrained_net = "lenet_mnist_model.pth"
         net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
-    elif model == "MNIST_lin":
+    elif dataset + "_" + model == "MNIST_Linear":
         net0 = MLPNet()
-    elif model == "CIFAR10":
-        net0 = NetCifar()
+    elif dataset + "_" + model == "CIFAR10_LeNet":
+        net0 = LeNetCifar()
+    elif dataset + "_" + model == "CIFAR10_ResNet":
+        net0 = ResNet18()
     net0 = net0.to(device)
 
     logging.info("Kind = {} \n".format(kind))
@@ -267,6 +270,7 @@ for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
         df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
                        temperature=temperature))
 df = pd.DataFrame(df)
-results_file = "%s_results_%s_experiment.csv" % (dataset, experiment_name)
+results_file = "%s_%s_results_%s_experiment.csv" % (
+    dataset, model, experiment_name)
 df.to_csv(results_file, sep=",")
 logging.info("Results written to file: %s" % results_file)
