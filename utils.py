@@ -51,8 +51,8 @@ def parse_cmdline_args():
         '--num_epsilons', type=int, default=10,
         help="number of epsilons to use in smoothing")
     parser.add_argument(
-        '--model', type=str, choices=["MNIST_conv", "MNIST_lin", "CIFAR10"],
-        default="MNIST_lin", help="choose which model to use")
+        '--model', type=str, choices=["Linear", "LeNet", "ResNet"],
+        default="Linear", help="choose which model to use")
     parser.add_argument(
         '--num_jobs', type=int, default=1,
         help="number of jobs to spawn for the experiment")
