@@ -34,11 +34,14 @@ np.random.seed(1)
 Simple linear model
 """
 
+
 class lin(nn.Module):
+
     def __init__(self):
         super(lin, self).__init__()
         self.fc1 = nn.Linear(1, 2)
-        self.soft = nn.Softmax(dim = 1)
+        self.soft = nn.Softmax(dim=1)
+
     def forward(self, x):
         x = self.fc1(x)
         x = self.soft(x)
@@ -48,22 +51,24 @@ class lin(nn.Module):
 Generating the triengular example
 """
 
+
 def generate_overlap(num_samples, gamma=.6):
     """
     Y is a binomial random variable. X is a triangular law (of different type
     knowing Y). Gamma is the parameter for Y. Gamma must be between 1/2 and 2/3.
     """
-    assert 1./2. <= gamma <= 2./3.
-    y = np.random.choice([0,1], size = num_samples, p = [1 - gamma, gamma])
-    x = [ np.random.triangular(-1,0,1)*(y[i]==1) - abs(np.random.triangular(
-        -1,0,1))*(y[i]==0) for i in range(num_samples) ]
+    assert 1. / 2. <= gamma <= 2. / 3.
+    y = np.random.choice([0, 1], size=num_samples, p=[1 - gamma, gamma])
+    x = [np.random.triangular(-1, 0, 1) * (y[i] == 1) - abs(np.random.triangular(
+        -1, 0, 1)) * (y[i] == 0) for i in range(num_samples)]
     return [[elem] for elem in x], y
 
 # Arguments/Parameters
 args = parse_cmdline_args()
 
+
 def run_experiment(net0, alpha, kind, epsilons, temperature=None,
-    define_net=False):
+                   define_net=False):
     """
     Specific function to run the triangular experiement.
     alpha is the strenght of label smoothing
@@ -75,20 +80,20 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     """
     print("alpha = ", alpha)
     net_lin = lin()
-    param = [torch.tensor([[0.],[1.]]), torch.tensor([0.,0.5])]
+    param = [torch.tensor([[0.], [1.]]), torch.tensor([0., 0.5])]
     for i, p in enumerate(net_lin.parameters()):
         p.data = param[i]
         if i == 0:
-            p.requires_grad=False
+            p.requires_grad = False
 
-    if define_net==False:
+    if define_net == False:
         net, loss_history, acc_tr = train_model_smooth(
-                net_lin, train_loader, val_loader, loss_func, num_epochs,
-                alpha = alpha, kind = kind, num_classes=None,
-                temperature = temperature)
+            net_lin, train_loader, val_loader, loss_func, num_epochs,
+            alpha=alpha, kind=kind, num_classes=None,
+            temperature=temperature)
     else:
         net = net0
-        loss_history=0
+        loss_history = 0
 
     print("Accuracy (Test) = ", test_model(net, test_loader))
 
@@ -103,13 +108,12 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     return (net, alpha, kind, temperature, loss_history, accuracy_adv)
 
 
-
 # ----------------------------------------------------------------------------
 # ----------------------------------------------------------------------------
 # ---------------------- Loop on gamma
 
 
-gammas = np.linspace(1./2., 2./3., args.num_gammas)
+gammas = np.linspace(1. / 2., 2. / 3., args.num_gammas)
 num_samples = args.num_samples
 loss_func = smooth_CE
 epsilons = np.linspace(0., 1., args.num_epsilons)
@@ -140,12 +144,11 @@ for ind_gamma, gamma in enumerate(gammas):
     test_loader = DataLoader(TensorDataset(X_test, y_test),
                              batch_size=1, shuffle=True)
     val_loader = DataLoader(TensorDataset(X_val, y_val),
-                            batch_size=round(0.4*0.4*num_samples),
+                            batch_size=round(0.4 * 0.4 * num_samples),
                             shuffle=True)
     test_loader.dataset = tuple(zip(map(lambda x: x.double(),
-                                    map(itemgetter(0), test_loader.dataset)),
+                                        map(itemgetter(0), test_loader.dataset)),
                                     map(itemgetter(1), test_loader.dataset)))
-
 
     # --------------- Bayes classifier
 
@@ -156,31 +159,29 @@ for ind_gamma, gamma in enumerate(gammas):
     dict_result0["{0}".format(ind_gamma)] = run_experiment(net0, alpha=0,
                         kind="adversarial", epsilons=epsilons, define_net=True)
 
-
     # --------------- Adversarial LS
 
     net_fin = lin()
     dict_results["{0}".format(ind_gamma)] = [run_experiment(net_fin,
-                         alpha=alpha, kind="adversarial", epsilons=epsilons)
-                         for alpha in alphas]
+        alpha=alpha, kind="adversarial", epsilons=epsilons) for alpha in alphas]
     theta = [0, 0]
     for i, al in enumerate(alphas):
         plt.plot(dict_results["{0}".format(ind_gamma)][i][4])
-        plot_name = "loss_plot/loss_" + str(round(gamma,2)) + "_" + str(round(al,2)) + ".png"
-        plt.savefig(plot_name, dpi = 100)
+        plot_name = "loss_plot/loss_" + \
+            str(round(gamma, 2)) + "_" + str(round(al, 2)) + ".png"
+        plt.savefig(plot_name, dpi=100)
         plt.clf()
         for j, p in enumerate(dict_results["{0}".format(ind_gamma)][i][0].
-            parameters()):
+                              parameters()):
             print(p.data)
-            theta[j] = p.data[1]-p.data[0]
-            print("b = ", theta[1]/theta[0])
-
+            theta[j] = p.data[1] - p.data[0]
+            print("b = ", theta[1] / theta[0])
 
     # ---------------- Saving the results
 
     df = []
     for alpha, (_, _, _, _, _, accs) in zip(alphas,  dict_results["{0}".
-        format(ind_gamma)]):
+                                                        format(ind_gamma)]):
         for epsilon, acc in zip(epsilons, accs):
             df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc,
                            kind="adversarial", temperature=0))
@@ -188,9 +189,5 @@ for ind_gamma, gamma in enumerate(gammas):
 
     df.loc[df['alpha'] == 0, 'acc'] = dict_result0["{0}".format(ind_gamma)][5]
 
-    file_name = "dataframes_outputs/df_gamma_" + str(round(gamma,2)) + ".csv"
+    file_name = "dataframes_outputs/df_gamma_" + str(round(gamma, 2)) + ".csv"
     df.to_csv(file_name, sep=",")
-
-
-
-
