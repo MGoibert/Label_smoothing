@@ -349,7 +349,7 @@ def DeepFool(image, true_label, model, maxiter = 50, lims=(-1,1), num_classes=10
 
 
 
-def _to_attack_space(x):
+def _to_attack_space(x, lims=lims):
     """
     For C&W attack: transform an input from the model space (]min, max[,
     depending on the data) into  an input of the attack space (]-inf, inf[).
@@ -368,7 +368,7 @@ def _to_attack_space(x):
     
     return x
 
-def _to_model_space(x):
+def _to_model_space(x, lims=lims):
     """
     For C&W attack: transform an input in the attack space (]-inf, inf[) into
     an input of the model space (]min, max[, depending on the data).
@@ -397,7 +397,7 @@ def _soft_to_logit(softmax_list):
 
 # ----------
 
-def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0):
+def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0, lims=lims):
     """
     C&W attack: Objective function to minimize.
     Parameters
@@ -423,7 +423,7 @@ def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0):
 # ----------
 
 def CW_attack(data, target, model, binary_search_steps=5, max_iterations=200,
-              confidence=0, learning_rate=0.05, initial_c=1e-2):
+              confidence=0, learning_rate=0.05, initial_c=1e-2, lims=lims):
     """
     Carlini & Wagner attack.
     """
@@ -530,7 +530,8 @@ def run_attack(model, test_loader, alpha, kind, temperature,
 
         elif method_attack == "CW":
             perturbed_data = CW_attack(data, target, model, binary_search_steps=5,
-            max_iterations=200, confidence=0, learning_rate=0.05, initial_c=1e-2)
+            max_iterations=200, confidence=0, learning_rate=0.05, initial_c=1e-2,
+            lims=lims)
 
         elif method_attack == "triangular":
             theta = [0, 0]
