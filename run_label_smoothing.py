@@ -267,9 +267,15 @@ jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
 if experiment_name != "temperature":
     jobs += [(alpha, kind, None) for alpha in alphas
              for kind in ["standard", "adversarial", "second_best"]]
-for _, alpha, kind, temperature, _, _, acc_test, accs, _ in Parallel(n_jobs=num_jobs)(
+if num_jobs > 1:
+    logging.info("Using joblib...")
+    results = Parallel(n_jobs=num_jobs)(
         delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
-        for alpha, kind, temperature in jobs):
+        for alpha, kind, temperature in jobs)
+else:
+    results = [run_experiment(alpha, kind, epsilons, temperature=temperature)
+               for alpha, kind, temperature in jobs]
+for _, alpha, kind, temperature, _, _, acc_test, accs, _ in results:
     for epsilon, acc in zip(epsilons, accs):
         df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
             kind=kind, temperature=temperature))
