@@ -34,9 +34,10 @@ from joblib import delayed, Parallel
 
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
-                                        attack_fgsm, run_fgsm)
+                                        attack_fgsm, attack_BIM, DeepFool,
+                                        CW_attack, run_attack)
 from utils import parse_cmdline_args
-from lenet import LeNet, ResNet18,
+from lenet import LeNet, ResNet18
 
 
 # Change precision tensor and set seed
@@ -148,7 +149,7 @@ elif dataset == "CIFAR10":
     # ---------------- Import CIFAR10
 
     root = './data'
-    batch_size = 100
+    batch_size = args.batch_size
     trans = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -170,7 +171,7 @@ elif dataset == "CIFAR10":
                                                batch_size=batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
                                               shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
+    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=100,
                                              shuffle=True)
 
     # Convert tensors into test_loader into double tensors
@@ -198,7 +199,10 @@ if experiment_name == "temperature":
 else:
     temperatures = [0.1]
 model = args.model
+method_attack = args.method_attack
 
+if method_attack == "DeepFool":
+    epsilons = [1]
 
 # define what device we are using
 cuda = torch.cuda.is_available()
@@ -230,25 +234,25 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     net, loss_history, acc_tr = train_model_smooth(
         net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
         kind=kind, num_classes=num_classes, temperature=temperature)
+    acc_test = test_model(net, test_loader)
 
     logging.info("Accuracy (training) = %g " % acc_tr)
-    logging.info("Accuracy (Test) = {} ".format(
-        test_model(net, test_loader)))
+    logging.info("Accuracy (Test) = {} ".format(acc_test))
 
     accuracy_adv = []
     for epsilon in epsilons:
         logging.info("epsilon = %s" % epsilon)
         start_time = time.time()
-        acc_adv, ex_adv = run_fgsm(net, test_loader, alpha, kind, temperature,
+        acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
                                    epsilon, loss_func, num_classes, lims=lims,
-                                   method_attack=None)
+                                   method_attack=method_attack)
         accuracy_adv.append(acc_adv)
         end_time = time.time()
         delta_time = (end_time - start_time)
         logging.info("Execution time = %.2f sec" % delta_time)
 
-    return (net, alpha, kind, temperature, loss_history, acc_tr, accuracy_adv,
-            delta_time)
+    return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,
+        accuracy_adv, delta_time)
 
 # run experiments in parallel with joblib
 # XXX You need to instal joblib version 0.11 like so
@@ -263,14 +267,14 @@ jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
 if experiment_name != "temperature":
     jobs += [(alpha, kind, None) for alpha in alphas
              for kind in ["standard", "adversarial", "second_best"]]
-for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
+for _, alpha, kind, temperature, _, _, acc_test, accs, _ in Parallel(n_jobs=num_jobs)(
         delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
         for alpha, kind, temperature in jobs):
     for epsilon, acc in zip(epsilons, accs):
-        df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
-                       temperature=temperature))
+        df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
+            kind=kind, temperature=temperature))
 df = pd.DataFrame(df)
-results_file = "%s_%s_results_%s_experiment.csv" % (
-    dataset, model, experiment_name)
+results_file = "%s_%s_results_%s_experiment_%s_attack.csv" % (
+    dataset, model, experiment_name, method_attack)
 df.to_csv(results_file, sep=",")
 logging.info("Results written to file: %s" % results_file)

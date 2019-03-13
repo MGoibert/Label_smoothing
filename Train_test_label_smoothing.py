@@ -14,7 +14,21 @@ Creation des fonctions pour faire tourner les algos sur MNIST
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import copy
+import numpy as np
+from torch.autograd import Variable
 from tqdm import tqdm
+
+
+
+def where(cond, x, y):
+    """
+    code from :
+        https://discuss.pytorch.org/t/how-can-i-do-the-operation-the-same-as-np-where/1329/8
+    """
+    cond = cond.double()
+    return (cond*x) + ((1-cond)*y)
+
 
 
 # -----------------------
@@ -197,7 +211,7 @@ def test_model(model, test_loader):
 
 # -----------------------
 
-def attack_fgsm(data, epsilon, data_grad, lims=(-1, 1)):
+def attack_fgsm(data, epsilon, data_grad, lims=(-1,1)):
     """
     Run the FGSM method attack on a single data point using espilon.
     Returns the perturbated data.
@@ -209,17 +223,263 @@ def attack_fgsm(data, epsilon, data_grad, lims=(-1, 1)):
     return perturbed_data
 
 
+
+
 # -----------------------
 
 
-def attack_triangular(data, epsilon, r):
+
+def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
+    num_iter=4, lims=(-1,1)):
+    
+    """
+    BIM (or PGD, or I-FGSM) method: iterative algorithm based on FGSM
+    """
+    if eps_iter == None:
+        eps_iter = epsilon/num_iter
+
+    x_adv = Variable(data.data, requires_grad=True)
+    target_smooth = target_smooth.detach()
+    for i in range(num_iter):
+        x_adv = Variable(x_adv.data, requires_grad=True)
+        h_adv = model(x_adv)
+        cost = loss_func(h_adv, target_smooth)
+
+        model.zero_grad()
+        if x_adv.grad is not None:
+            x_adv.grad.data.fill_(0)
+        cost.backward()
+
+        x_adv.grad.sign_()
+        x_adv = x_adv + eps_iter*x_adv.grad
+        x_adv = where(x_adv > data+epsilon, data+epsilon, x_adv)
+        x_adv = where(x_adv < data-epsilon, data-epsilon, x_adv)
+        x_adv = Variable(x_adv.data.detach(), requires_grad=True)
+    
+    x_adv = torch.clamp(x_adv, *lims)
+    del h_adv
+    return x_adv
+
+
+
+# -----------------------
+    
+
+
+
+def DeepFool(image, true_label, model, maxiter = 50, lims=(-1,1), num_classes=10):
+  '''   Our VGG model accepts images with dimension [B,C,H,W] and also we have trained the model with the images normalized with mean and std.
+        Therefore the image input to this function is mean ans std normalized.
+        min_val and max_val is used to clamp the final image
+  '''
+
+  is_cuda = torch.cuda.is_available()
+  
+  if is_cuda:
+    model = model.cuda()
+    image = image.cuda()
+
+  model.train(False)
+  f = model(Variable(image,requires_grad = True)).data.cpu().numpy().flatten()
+  I = (np.array(f)).argsort()[::-1]
+  label = I[0]  # Image label
+
+  input_shape = image.detach().cpu().numpy().shape
+  
+  
+  pert_image = image.detach().cpu().numpy().copy()   # pert_image stores the perturbed image
+  w = np.zeros(input_shape)                # 
+  r_tot = np.zeros(input_shape)   # r_tot stores the total perturbation
+  
+  pert_image = torch.from_numpy(pert_image)
+  
+  if is_cuda:
+    pert_image = pert_image.cuda()
+    
+  x = Variable(pert_image, requires_grad = True)
+  fs = model(x)
+  fs_list = [ fs[0,I[k]] for k in range(num_classes) ]
+  
+  k_i = label  # k_i stores the label of the ith iteration
+  loop_i = 0
+
+  while loop_i < maxiter and k_i == label:
+    pert = np.inf
+    fs[0,I[0]].backward(retain_graph = True)  
+    grad_khat_x0 = copy.deepcopy(x.grad.data.cpu().numpy())  # Gradient wrt to the predicted label
+    
+    for k in range(1,num_classes):
+      if x.grad is not None:
+        x.grad.data.fill_(0)
+      fs[0,I[k]].backward(retain_graph = True)
+      grad_k = x.grad.data.cpu().numpy()
+      
+      w_k = grad_k - grad_khat_x0
+      f_k = (fs[0,I[k]] - fs[0,I[0]]).data.cpu().numpy()
+      
+      pert_k = abs(f_k)/(np.linalg.norm(w_k.flatten()))
+      
+      if pert_k < pert:
+          pert = pert_k
+          w = w_k
+
+    r_i = (pert)*(w/np.linalg.norm(w.flatten()))
+    r_tot = np.float64(r_tot +  r_i.squeeze())
+
+    if is_cuda:
+      pert_image += (torch.from_numpy(r_tot)).cuda()
+    else:
+      pert_image += torch.from_numpy(r_tot).double()
+    
+    x = Variable(pert_image, requires_grad = True)
+    fs = model(x)
+    k_i = np.argmax(fs.data.cpu().numpy().flatten())
+    
+      
+    loop_i += 1
+  pert_image = torch.clamp(pert_image, *lims) 
+  
+  return pert_image
+
+
+
+
+# -----------------------
+
+
+
+
+def _to_attack_space(x):
+    """
+    For C&W attack: transform an input from the model space (]min, max[,
+    depending on the data) into  an input of the attack space (]-inf, inf[).
+    Take a torch tensor as input.
+    """
+    # map from [min_, max_] to [-1, +1]
+    a = (lims[0] + lims[1]) / 2
+    b = (lims[1] - lims[0]) / 2
+    x = (x - a) / b
+
+    # from [-1, +1] to approx. (-1, +1)
+    x = x * 0.999999999999999
+
+    # from (-1, +1) to (-inf, +inf)
+    x = 1./2. * torch.log((1+x)/(1-x))
+    
+    return x
+
+def _to_model_space(x):
+    """
+    For C&W attack: transform an input in the attack space (]-inf, inf[) into
+    an input of the model space (]min, max[, depending on the data).
+    Take a torch tensor as input.
+    """
+
+    # from (-inf, +inf) to (-1, +1)
+    x = (1 - torch.exp(-2*x*0.999))/(1 + torch.exp(
+            -2*x*0.999))
+
+    # map from (-1, +1) to (min_, max_)
+    a = (lims[0] + lims[1]) / 2
+    b = (lims[1] - lims[0]) / 2
+    x = x * b + a
+    
+    return x
+
+# ----------
+
+def _soft_to_logit(softmax_list):
+    """
+    Maths: if p_i is the softmax corresponding to the logit z_i, then
+    z_i = log(p_i) + const. This has not a unique solution, we choose const=0.
+    """
+    return torch.log(softmax_list)
+
+# ----------
+
+def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0):
+    """
+    C&W attack: Objective function to minimize.
+    Parameters
+    ---------
+    adv_x: adversarial exemple (original data in the attack space + perturbation)
+    reconstruct_data: almost original data (original after to_attack_space and
+                     to_model_space)
+    target: tensor, true target class
+    logits: logits computed by the model with adv_x as input
+    c: constant value tunning the strenght of the adv_loss
+    confidence: parameter tunning the level of confidence for the adv exemple.
+    """
+    c_min = target.item()
+    ind = np.array([ i for i in range(len(logits.squeeze())) if i!=target.item() ])
+    c_max = logits.squeeze()[ind].max(-1, keepdim=True)[1].item()
+    c_max = c_max*( c_max<c_min ) + (c_max+1)*(c_max>=c_min)
+    
+    is_adv_loss = max(logits.squeeze()[c_min] - logits.squeeze()[c_max] + confidence, 0)
+    l2_dist = torch.sum( (adv_x - reconstruct_data)**2 )/(lims[1]-lims[0])**2
+    tot_dist = l2_dist + c*is_adv_loss
+    return tot_dist
+
+# ----------
+
+def CW_attack(data, target, model, binary_search_steps=5, max_iterations=200,
+              confidence=0, learning_rate=0.05, initial_c=1e-2):
+    """
+    Carlini & Wagner attack.
+    """
+    
+    att_original = _to_attack_space(data.detach())
+    reconstruct_original = _to_model_space(att_original)
+    
+    c = initial_c
+    lower_bound = 0
+    upper_bound = np.inf
+    best_x = data
+    
+    for binary_search_step in range(binary_search_steps):
+        perturb = torch.zeros_like(att_original, requires_grad=True)
+        optimizer_CW = torch.optim.Adam([perturb], lr=learning_rate)
+        found_adv = False
+        
+        for iteration in range(max_iterations):
+            x = _to_model_space(att_original + perturb)
+            logits = _soft_to_logit(model(x))
+            cost = _fct_to_min(x, reconstruct_original, target, logits, c, confidence)
+            optimizer_CW.zero_grad()
+            cost.backward()
+            optimizer_CW.step()
+            
+            if logits.squeeze().max(-1, keepdim=True)[1] != target:
+                found_adv=True
+            else:
+                found_adv = False
+        
+        if found_adv == True:
+            upper_cound = c
+            best_x = x
+        else:
+            lower_bound = c
+        if upper_bound == np.inf:
+            c = 10*c
+        else:
+            c = (lower_bound + upper_bound)/2
+            
+    return best_x
+
+
+
+# -----------------------
+
+
+
+def attack_triangular(data, epsilon, r, lims=(-1,1)):
     """
     Run the optimal attack on the Triangular example (linear model)
     """
 
     perturbed_data = data - epsilon * \
         (data.item() >= -r.item()) + epsilon * (data.item() < -r.item())
-    perturbed_data = torch.clamp(perturbed_data, -1, 1)
+    perturbed_data = torch.clamp(perturbed_data, *lims)
 
     return perturbed_data
 
@@ -227,7 +487,7 @@ def attack_triangular(data, epsilon, r):
 # -----------------------
 
 
-def run_fgsm(model, test_loader, alpha, kind, temperature,
+def run_attack(model, test_loader, alpha, kind, temperature,
              epsilon, loss_func, num_classes=None, lims=(0, 1),
              method_attack=None):
     """
@@ -235,6 +495,7 @@ def run_fgsm(model, test_loader, alpha, kind, temperature,
     Outputs = adversarial accuracy and adversarial examples
     """
 
+    model.eval()
     correct = 0
     adv_examples = []
 
@@ -250,12 +511,26 @@ def run_fgsm(model, test_loader, alpha, kind, temperature,
         if init_pred.item() != target.item():
             continue  # If the model is already wrong, continue
 
-        if method_attack == None:
+        if method_attack == "FGSM":
             loss = loss_func(output, target_smooth)
             model.zero_grad()
             loss.backward()
             data_grad = data.grad.data
             perturbed_data = attack_fgsm(data, epsilon, data_grad, lims=lims)
+
+        elif method_attack == "BIM":
+            model.zero_grad()
+            data.requires_grad = True
+            perturbed_data = attack_BIM(data, target_smooth, model, loss_func,
+                epsilon, eps_iter=None, num_iter=4, lims=lims)
+
+        elif method_attack == "DeepFool":
+            perturbed_data = DeepFool(data, target, model, maxiter=50, lims=lims,
+                num_classes=num_classes)
+
+        elif method_attack == "CW":
+            perturbed_data = CW_attack(data, target, model, binary_search_steps=5,
+            max_iterations=200, confidence=0, learning_rate=0.05, initial_c=1e-2)
 
         elif method_attack == "triangular":
             theta = [0, 0]
