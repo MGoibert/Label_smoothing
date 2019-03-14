@@ -54,7 +54,7 @@ def parse_cmdline_args():
         '--model', type=str, choices=["Linear", "LeNet", "ResNet"],
         default="Linear", help="choose which model to use")
     parser.add_argument(
-        '--method_attack', type=str, choices=["FGSM", "DeepFool", "BIM", "CW", "triangular"],
+        '--attack_method', type=str, choices=["FGSM", "DeepFool", "BIM", "CW", "triangular"],
         default="FGSM", help="which type of adversarial attack")
     parser.add_argument(
         '--num_jobs', type=int, default=1,

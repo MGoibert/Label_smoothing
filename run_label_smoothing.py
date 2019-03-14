@@ -131,16 +131,6 @@ if dataset == "MNIST":
         else:
             test.append(x)
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                               batch_size=batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
-                                              shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
-                                             shuffle=True)
-
-    # Convert tensors into test_loader into double tensors
-    test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
-                test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
     # Limit values for X
     lims = -0.5, 0.5
 
@@ -167,21 +157,22 @@ elif dataset == "CIFAR10":
         else:
             test.append(x)
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                               batch_size=batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
-                                              shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=100,
-                                             shuffle=True)
-
-    # Convert tensors into test_loader into double tensors
-    test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
-                test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
     # Limit values for X
     lims = -1, 1
     # Name of classes
     classes = ('plane', 'car', 'bird', 'cat',
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+
+train_loader = torch.utils.data.DataLoader(dataset=train_set,
+                                           batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
+                                          shuffle=True)
+val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=100,
+                                         shuffle=True)
+# Convert tensors into test_loader into double tensors
+test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
+            test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
 
 
 # Parameters
@@ -199,9 +190,9 @@ if experiment_name == "temperature":
 else:
     temperatures = [0.1]
 model = args.model
-method_attack = args.method_attack
+attack_method = args.attack_method
 
-if method_attack == "DeepFool":
+if attack_method == "DeepFool":
     epsilons = [1]
 
 # define what device we are using
@@ -244,15 +235,15 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         logging.info("epsilon = %s" % epsilon)
         start_time = time.time()
         acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
-                                   epsilon, loss_func, num_classes, lims=lims,
-                                   method_attack=method_attack)
+                                     epsilon, loss_func, num_classes, lims=lims,
+                                     attack_method=attack_method)
         accuracy_adv.append(acc_adv)
         end_time = time.time()
         delta_time = (end_time - start_time)
         logging.info("Execution time = %.2f sec" % delta_time)
 
     return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,
-        accuracy_adv, delta_time)
+            accuracy_adv, delta_time)
 
 # run experiments in parallel with joblib
 # XXX You need to instal joblib version 0.11 like so
@@ -272,9 +263,9 @@ for _, alpha, kind, temperature, _, _, acc_test, accs, _ in Parallel(n_jobs=num_
         for alpha, kind, temperature in jobs):
     for epsilon, acc in zip(epsilons, accs):
         df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
-            kind=kind, temperature=temperature))
+                       kind=kind, temperature=temperature))
 df = pd.DataFrame(df)
 results_file = "%s_%s_results_%s_experiment_%s_attack.csv" % (
-    dataset, model, experiment_name, method_attack)
+    dataset, model, experiment_name, attack_method)
 df.to_csv(results_file, sep=",")
 logging.info("Results written to file: %s" % results_file)
