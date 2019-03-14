@@ -42,13 +42,13 @@ def parse_cmdline_args():
         '--learning_rate', type=float, default=1e-4,
         help="learning rate for SGD")
     parser.add_argument(
-        '--num_alphas', type=int, default=10,
+        '--num_alphas', type=int, default=11,
         help="number of alphas to use in smoothing")
     parser.add_argument(
         '--max_epsilon', type=float, default=.25,
         help="maximum adversarial perturbation in experiments")
     parser.add_argument(
-        '--num_epsilons', type=int, default=10,
+        '--num_epsilons', type=int, default=11,
         help="number of epsilons to use in smoothing")
     parser.add_argument(
         '--model', type=str, choices=["Linear", "LeNet", "ResNet"],

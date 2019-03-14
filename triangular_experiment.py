@@ -22,7 +22,7 @@ from operator import itemgetter
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
                                         attack_fgsm, attack_triangular,
-                                        run_fgsm)
+                                        run_attack)
 from utils import parse_cmdline_args
 
 # Change precision tensor
