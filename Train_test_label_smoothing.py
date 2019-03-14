@@ -18,6 +18,15 @@ import copy
 import numpy as np
 from torch.autograd import Variable
 from tqdm import tqdm
+import logging
+
+
+
+cuda = torch.cuda.is_available()
+logging.info("CUDA Available: {}".format(cuda))
+device = torch.device("cuda" if cuda else "cpu")
+print("device train = ", device)
+
 
 
 def where(cond, x, y):
@@ -62,7 +71,7 @@ def one_hot(y, num_classes=None):
         classes, _ = y.max(0)
         num_classes = (classes.max() + 1).item()
     if y.dim() > 0:
-        y_ = torch.zeros(len(y), num_classes)
+        y_ = torch.zeros(len(y), num_classes, device=y.device)
     else:
         y_ = torch.zeros(1, num_classes)
     y_.scatter_(1, y.unsqueeze(-1), 1)
@@ -89,7 +98,7 @@ def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
     y_ = (1 - alpha) * one_hot(y, num_classes=num_classes)
     if alpha > 0.:
         if kind == "standard":
-            salt = torch.ones_like(y_)
+            salt = torch.ones_like(y_, device=y_.device)
             salt = (1 - one_hot(y, num_classes=num_classes)) * \
                 salt / (salt.sum(-1) - 1).unsqueeze(-1)
         elif kind == "adversarial":
@@ -147,6 +156,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
 
         model.train()
         for x_batch, y_batch in tqdm(train_loader):
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
             x_batch = x_batch.double()
             optimizer.zero_grad()
             y_pred = model(x_batch)
@@ -162,6 +172,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         # if val_loader is not None:
         model.eval()
         for x_val, y_val in val_loader:
+            x_val, y_val = x_val.to(device), y_val.to(device)
             x_val = x_val.double()
         y_val_pred = model(x_val)
         smoothed_y_val = smooth_label(y_val, alpha, y_pred=y_val_pred, kind=kind,
@@ -176,6 +187,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
     model.eval()
     with torch.no_grad():
         for data, target in val_loader:
+            data, target = data.to(device), target.to(device)
             data = data.double()
             output = model(data)
             pred = output.argmax(dim=1, keepdim=True)
@@ -197,6 +209,7 @@ def test_model(model, test_loader):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
             data = data.double()
             output = model(data)
             # get the index of the max log-probability
@@ -535,6 +548,8 @@ def run_attack(model, test_loader, alpha, kind, temperature,
     adv_examples = []
 
     for data, target in test_loader:
+
+        data, target = data.to(device), target.to(device)
 
         data.requires_grad = True
         output = model(data)

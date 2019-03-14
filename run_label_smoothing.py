@@ -35,7 +35,7 @@ from joblib import delayed, Parallel
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
                                         attack_fgsm, attack_BIM, DeepFool,
-                                        CW_attack, run_attack)
+                                        CW_attack, run_attack, device)
 from utils import parse_cmdline_args
 from lenet import LeNet, ResNet18
 
@@ -101,6 +101,10 @@ class LeNetCifar(nn.Module):
 """
 Environment and datastets
 """
+
+# Device
+device = device
+print("device run = ", device)
 
 # Parse command-line arguments
 args = parse_cmdline_args()
@@ -196,9 +200,9 @@ if attack_method == "DeepFool":
     epsilons = [1]
 
 # define what device we are using
-cuda = torch.cuda.is_available()
-logging.info("CUDA Available: {}".format(cuda))
-device = torch.device("cuda" if cuda else "cpu")
+#cuda = torch.cuda.is_available()
+#logging.info("CUDA Available: {}".format(cuda))
+#device = torch.device("cuda" if cuda else "cpu")
 
 
 """
