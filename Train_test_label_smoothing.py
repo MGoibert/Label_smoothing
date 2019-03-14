@@ -335,12 +335,10 @@ def DeepFool(image, true_label, model, maxiter=50, lims=(-1, 1), num_classes=10)
     return pert_image
 
 
-<<<<<<< HEAD
+
 # -----------------------
 
 
-=======
->>>>>>> be91d1543aebe4cdc4c4463e0c22fb72c078c68c
 def _to_attack_space(x, lims=(0, 1)):
     """
     For C&W attack: transform an input from the model space (]min, max[,
@@ -360,10 +358,7 @@ def _to_attack_space(x, lims=(0, 1)):
 
     return x
 
-<<<<<<< HEAD
 
-=======
->>>>>>> be91d1543aebe4cdc4c4463e0c22fb72c078c68c
 def _to_model_space(x, lims=(0, 1)):
     """
     For C&W attack: transform an input in the attack space (]-inf, inf[) into
@@ -396,10 +391,7 @@ def _soft_to_logit(softmax_list):
 
 # ----------
 
-<<<<<<< HEAD
 
-=======
->>>>>>> be91d1543aebe4cdc4c4463e0c22fb72c078c68c
 def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0, lims=(0, 1)):
     """
     C&W attack: Objective function to minimize. Untargeted implementation.
