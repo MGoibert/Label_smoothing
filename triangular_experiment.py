@@ -100,9 +100,9 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     accuracy_adv = []
     for epsilon in epsilons:
         print("epsilon = ", epsilon)
-        acc_adv, ex_adv = run_fgsm(net, test_loader, alpha, kind, temperature,
-                                   epsilon, loss_func, num_classes=None,
-                                   method_attack="triangular")
+        acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
+                                     epsilon, loss_func, num_classes=None,
+                                     attack_method="triangular")
         accuracy_adv.append(acc_adv)
 
     return (net, alpha, kind, temperature, loss_history, accuracy_adv)
@@ -181,7 +181,7 @@ for ind_gamma, gamma in enumerate(gammas):
 
     df = []
     for alpha, (_, _, _, _, _, accs) in zip(alphas,  dict_results["{0}".
-                                                        format(ind_gamma)]):
+                                                            format(ind_gamma)]):
         for epsilon, acc in zip(epsilons, accs):
             df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc,
                            kind="adversarial", temperature=0))
