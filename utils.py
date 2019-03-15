@@ -36,6 +36,9 @@ def parse_cmdline_args():
         '--batch_size', type=int, default=100,
         help="batch size for SGD")
     parser.add_argument(
+        '--test_batch_size', type=int, default=1,
+        help="batch size for testing")
+    parser.add_argument(
         '--num_epochs', type=int, default=7,
         help="number of passes to make over data")
     parser.add_argument(

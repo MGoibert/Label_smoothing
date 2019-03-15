@@ -556,10 +556,11 @@ def run_attack(model, test_loader, alpha, kind, temperature,
 
     model.eval()
     correct = {}
+    num_test = 0
     adv_examples = {}
     print("Running attack")
     for data, target in test_loader:
-
+        num_test += len(data)
         data, target = data.to(device), target.to(device)
 
         data.requires_grad = True
@@ -569,19 +570,17 @@ def run_attack(model, test_loader, alpha, kind, temperature,
         # Prediction (original data)
         init_pred = output.argmax(1, keepdim=True)
 
+        # XXX really ?
+        mask = init_pred.view(-1) == target
+
         if attack_method == "FGSM":
             loss = loss_func(output, target_smooth)
             model.zero_grad()
             loss.backward()
-
-            if True:
-                data_grad = data.grad.data
-                perturbed_data = attack_fgsm(data, epsilons, data_grad,
-                                             lims=lims)
-                perturbed_data = perturbed_data.squeeze(1)  # XXX ???
-            else:
-                data_grad = data.grad.data
-                perturbed_data = attack_fgsm(data, epsilons, data_grad, lims=lims)
+            data_grad = data.grad.data
+            perturbed_data = attack_fgsm(data, epsilons, data_grad,
+                                         lims=lims)
+            perturbed_data = perturbed_data.squeeze(1)  # XXX ???
 
         elif attack_method == "BIM":
             if len(epsilons) > 1:
@@ -611,32 +610,40 @@ def run_attack(model, test_loader, alpha, kind, temperature,
 
         output = model(perturbed_data)
 
+        # XXX unstack stuff
+        shape = [len(data), len(epsilons)] + list(output.shape)[1:]
+        output = output.reshape(shape)
+        output = output.permute(1, 0, 2)
+
         # Check for success
         for epsilon, pdata, o in zip(epsilons, perturbed_data, output):
             # Prediction (perturbated data)
             correct[epsilon] = correct.get(epsilon, 0)
-            final_pred = o.argmax(keepdim=True)
-            if epsilon not in adv_examples:
-                adv_examples[epsilon] = []
-            if final_pred.item() == target.item():
-                correct[epsilon] += 1
-                # Special case for saving 0 epsilon examples
-                if (epsilon == 0) and (len(adv_examples) < 5):
-                    adv_ex = pdata.squeeze().detach().cpu().numpy()
-                    adv_examples[epsilon].append(
-                        (init_pred.item(), final_pred.item(), adv_ex))
-            else:
-                # Save some adv examples for visualization later
-                if len(adv_examples[epsilon]) < 5:
-                    adv_ex = pdata.squeeze().detach().cpu().numpy()
-                    adv_examples[epsilon].append(
-                        (init_pred.item(), final_pred.item(), adv_ex))
+            final_pred = o.argmax(1, keepdim=True)
+            correct[epsilon] += ((final_pred.view(-1) == target) * mask).sum().item()
+            
+            # XXX uncomment
+            # if epsilon not in adv_examples:
+            #     adv_examples[epsilon] = []
+            # if final_pred.item() == target.item():
+            #     correct[epsilon] += 1
+            #     # Special case for saving 0 epsilon examples
+            #     if (epsilon == 0) and (len(adv_examples) < 5):
+            #         adv_ex = pdata.squeeze().detach().cpu().numpy()
+            #         adv_examples[epsilon].append(
+            #             (init_pred.item(), final_pred.item(), adv_ex))
+            # else:
+            #     # Save some adv examples for visualization later
+            #     if len(adv_examples[epsilon]) < 5:
+            #         adv_ex = pdata.squeeze().detach().cpu().numpy()
+            #         adv_examples[epsilon].append(
+            #             (init_pred.item(), final_pred.item(), adv_ex))
 
     final_acc = {}
     for epsilon in epsilons:
-        final_acc[epsilon] = correct[epsilon] / float(len(test_loader))
-        print("Epsilon: %.3f\tTest Accuracy = %i / %i = %.2f" % (
-            epsilon, correct[epsilon], len(test_loader),
+        final_acc[epsilon] = correct[epsilon] / float(num_test)
+        print("Epsilon: %.3f\tTest Accuracy = %i / %i = %f" % (
+            epsilon, correct[epsilon], num_test,
             final_acc[epsilon]))
 
     # Return the accuracy and an adversarial example
