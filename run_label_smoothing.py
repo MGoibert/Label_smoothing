@@ -226,6 +226,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 
     logging.info("Kind = {} \n".format(kind))
     logging.info("alpha = {}".format(alpha))
+
     net, loss_history, acc_tr = train_model_smooth(
         net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
         kind=kind, num_classes=num_classes, temperature=temperature)
@@ -234,18 +235,20 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     logging.info("Accuracy (training) = %g " % acc_tr)
     logging.info("Accuracy (Test) = {} ".format(acc_test))
 
+    # run attack (possibly massively in parallel over test data and epsilons)
     accuracy_adv = []
-    for epsilon in epsilons:
-        logging.info("epsilon = %s" % epsilon)
-        start_time = time.time()
-        acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
-                                     epsilon, loss_func, num_classes, lims=lims,
-                                     attack_method=attack_method)
-        accuracy_adv.append(acc_adv)
-        end_time = time.time()
-        delta_time = (end_time - start_time)
-        logging.info("Execution time = %.2f sec" % delta_time)
+    t0 = time.time()
+    accs_adv, exs_adv = run_attack(net, test_loader, alpha, kind, temperature,
+                                   epsilons, loss_func, num_classes, lims=lims,
+                                   attack_method=attack_method)
+    delta_time = time.time() - t0
 
+    for epsilon in epsilons:
+        acc_adv = accs_adv[epsilon]
+        ex_adv = exs_adv[epsilon]
+        logging.info("epsilon = %s" % epsilon)
+        accuracy_adv.append(acc_adv)
+    print("Execution time = %.2f sec" % delta_time)
     return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,
             accuracy_adv, delta_time)
 
