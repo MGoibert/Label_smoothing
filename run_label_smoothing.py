@@ -5,6 +5,12 @@ Created on Wed Feb 13 14:05:17 2019
 
 @author: m.goibert
 """
+
+
+"""
+Libraries
+"""
+
 from operator import itemgetter
 import time
 import random
@@ -20,48 +26,44 @@ import torch.nn.functional as F
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from joblib import delayed, Parallel
 
-# os.chdir("/Users/m.goibert/Documents/Criteo/Code/LS_good_version")
-# os.getcwd()
+
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
-                                        attack_fgsm, run_fgsm)
+                                        attack_fgsm, attack_BIM, DeepFool,
+                                        CW_attack, run_attack, device)
 from utils import parse_cmdline_args
-from lenet import LeNet
+from lenet import LeNet, ResNet18
 
-# Change precision tensor
+
+# Change precision tensor and set seed
 torch.set_default_tensor_type(torch.DoubleTensor)
 random.seed(1)
 np.random.seed(1)
 
 
-def generate_overlap(num_samples, gamma=.3, beta=.6, random_state=None):
-    assert 0. < gamma < 1.
-    assert 0. < beta < 1.
-    rng = check_random_state(random_state)
-    x = 2 * rng.rand(num_samples) - 1
-    y = np.sign(x)
-    mask = np.abs(x) <= gamma
-    y[mask] = rng.choice([-1, 1], size=mask.sum(), p=[beta, 1. - beta])
-    return x[:, None], (y + 1) / 2
-
-
 """
-Model
+Models
 """
 
-# Model
+# Linear model for MNIST
+
+
 class MLPNet(nn.Module):
+
     def __init__(self):
         super(MLPNet, self).__init__()
-        self.fc1 = nn.Linear(28*28, 500)
+        self.fc1 = nn.Linear(28 * 28, 500)
         self.fc2 = nn.Linear(500, 256)
         self.fc3 = nn.Linear(256, 10)
-        self.soft = nn.Softmax(dim = 1)
+        self.soft = nn.Softmax(dim=1)
+
     def forward(self, x):
-        x = x.view(-1, 28*28)
+        x = x.view(-1, 28 * 28)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
@@ -71,27 +73,115 @@ class MLPNet(nn.Module):
     def __repr__(self):
         return "MLP"
 
-### Parse command-line arguments
+
+# LeNet model for CIFAR10
+
+class LeNetCifar(nn.Module):
+
+    def __init__(self):
+        super(NetCifar, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        x = F.softmax(x, dim=1)
+        return x
+
+
+"""
+Environment and datastets
+"""
+
+# Device
+device = device
+print("device run = ", device)
+
+# Parse command-line arguments
 args = parse_cmdline_args()
-### Dataset
-# Import MNIST
-root = './data'
-batch_size = args.batch_size
-trans = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
+dataset = args.dataset
 
-train_set = dset.MNIST(root=root, train=True, transform=trans, download=True)
-test_set = dset.MNIST(root=root, train=False, transform=trans, download=True)
 
-val_data = []
-test = []
-for i, x in enumerate(test_set):
-    if i < 1000:
-        val_data.append(x)
-    else:
-        test.append(x)
+# Dataset
 
-# Running the experiement
-num_jobs = args.num_jobs
+if dataset == "MNIST":
+
+    # -------------- Import MNIST
+
+    root = './data'
+    batch_size = args.batch_size
+    trans = transforms.Compose(
+        [transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
+
+    train_set = dset.MNIST(root=root, train=True,
+                           transform=trans, download=True)
+    test_set = dset.MNIST(root=root, train=False,
+                          transform=trans, download=True)
+
+    val_data = []
+    test = []
+    for i, x in enumerate(test_set):
+        if i < 1000:
+            val_data.append(x)
+        else:
+            test.append(x)
+
+    # Limit values for X
+    lims = -0.5, 0.5
+
+elif dataset == "CIFAR10":
+
+    # ---------------- Import CIFAR10
+
+    root = './data'
+    batch_size = args.batch_size
+    trans = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+    train_set = dset.CIFAR10(root=root, train=True,
+                             transform=trans, download=True)
+    test_set = dset.CIFAR10(root=root, train=False,
+                            transform=trans, download=True)
+
+    val_data = []
+    test = []
+    for i, x in enumerate(test_set):
+        if i < 1000:
+            val_data.append(x)
+        else:
+            test.append(x)
+
+    # Limit values for X
+    lims = -1, 1
+    # Name of classes
+    classes = ('plane', 'car', 'bird', 'cat',
+               'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+
+train_loader = torch.utils.data.DataLoader(dataset=train_set,
+                                           batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
+                                          shuffle=True)
+val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=100,
+                                         shuffle=True)
+# Convert tensors into test_loader into double tensors
+test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
+            test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
+
+
+# Parameters
+
+num_jobs = args.num_jobs        # for parallelisation
 loss_func = smooth_CE
 num_classes = 10
 num_epsilons = args.num_epsilons
@@ -99,96 +189,65 @@ alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
 epsilons = np.linspace(0, args.max_epsilon, num=args.num_epsilons)
 experiment_name = args.experiment_name
-use_cnn = args.use_cnn
 if experiment_name == "temperature":
     temperatures = np.logspace(-4, 3, num=8)
 else:
     temperatures = [0.1]
+model = args.model
+attack_method = args.attack_method
 
-lims = 0, 1
+if attack_method == "DeepFool":
+    epsilons = [1]
 
 # define what device we are using
-cuda = torch.cuda.is_available()
-logging.info("CUDA Available: {}".format(cuda))
-device = torch.device("cuda" if cuda else "cpu")
+#cuda = torch.cuda.is_available()
+#logging.info("CUDA Available: {}".format(cuda))
+#device = torch.device("cuda" if cuda else "cpu")
 
-
-# XXX for ML Big Days presentation
-presentation_mode = True
-
-if presentation_mode:
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                               batch_size=batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
-                                          shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=1000,
-                                             shuffle=True)
-else:
-    from sklearn.model_selection import train_test_split
-    from torch.utils.data import TensorDataset, DataLoader
-    from mlp import MLP as MLPNet
-    X, y = generate_overlap(10000)
-    lims = -1, 1
-    train_size = .6
-    num_classes = 2
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, train_size=.6)
-    X_test, X_val, y_test, y_val = train_test_split(
-        X_test, y_test, train_size=.6)
-    X_train = torch.DoubleTensor(X_train)
-    y_train = torch.LongTensor(y_train.astype(int))
-    X_val = torch.DoubleTensor(X_val)
-    y_val = torch.LongTensor(y_val.astype(int))
-    X_test = torch.DoubleTensor(X_test)
-    y_test = torch.LongTensor(y_test.astype(int))
-    train_loader = DataLoader(TensorDataset(X_train, y_train),
-                              batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(TensorDataset(X_test, y_test),
-                             batch_size=1, shuffle=True)
-    val_loader = DataLoader(TensorDataset(X_val, y_val),
-                              batch_size=1000, shuffle=True)
-
-# Convert tensors into test_loader into double tensors
-test_loader.dataset = tuple(zip( map( lambda x: x.double(), map(itemgetter(0), test_loader.dataset)),
-                          map(itemgetter(1), test_loader.dataset) ))
 
 """
 Running
 """
 
+
 def run_experiment(alpha, kind, epsilons, temperature=None):
-    if use_cnn:
-        net = LeNet()
+    if dataset + "_" + model == "MNIST_LeNet":
+        net0 = LeNet()
         # load the pretrained net
         pretrained_net = "lenet_mnist_model.pth"
-        net.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
-    else:
-        net = MLPNet()
-    net = net.to(device)
+        net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
+    elif dataset + "_" + model == "MNIST_Linear":
+        net0 = MLPNet()
+    elif dataset + "_" + model == "CIFAR10_LeNet":
+        net0 = LeNetCifar()
+    elif dataset + "_" + model == "CIFAR10_ResNet":
+        net0 = ResNet18()
+    net0 = net0.to(device)
 
+    logging.info("Kind = {} \n".format(kind))
     logging.info("alpha = {}".format(alpha))
-    #optimizer = optim.SGD(model.parameters(), lr=1.75) 
     net, loss_history, acc_tr = train_model_smooth(
-        net, train_loader, val_loader, loss_func, num_epochs, alpha = alpha,
-        kind = kind, num_classes = num_classes, temperature = temperature)
+        net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
+        kind=kind, num_classes=num_classes, temperature=temperature)
+    acc_test = test_model(net, test_loader)
 
     logging.info("Accuracy (training) = %g " % acc_tr)
-    logging.info("Accuracy (Test) = {} ".format(
-        test_model(net, test_loader)))
+    logging.info("Accuracy (Test) = {} ".format(acc_test))
 
     accuracy_adv = []
     for epsilon in epsilons:
         logging.info("epsilon = %s" % epsilon)
         start_time = time.time()
-        acc_adv, ex_adv = run_fgsm(net, test_loader, alpha, kind, temperature,
-                                   epsilon, loss_func, num_classes, lims=lims)
+        acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
+                                     epsilon, loss_func, num_classes, lims=lims,
+                                     attack_method=attack_method)
         accuracy_adv.append(acc_adv)
         end_time = time.time()
         delta_time = (end_time - start_time)
         logging.info("Execution time = %.2f sec" % delta_time)
 
-    return (net, alpha, kind, temperature, loss_history, acc_tr, accuracy_adv,
-            delta_time)
+    return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,
+            accuracy_adv, delta_time)
 
 # run experiments in parallel with joblib
 # XXX You need to instal joblib version 0.11 like so
@@ -196,19 +255,27 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 # XXX Newer versions produce the error:
 # XXX RuntimeError: Expected object of scalar type Float but got scalar type
 # XXX Double for argument #4 'mat1'
+
 df = []
 jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
         for temperature in temperatures]
 if experiment_name != "temperature":
     jobs += [(alpha, kind, None) for alpha in alphas
-             for kind in ["standard", "adversarial"]]
-for _, alpha, kind, temperature, _, _, accs, _ in Parallel(n_jobs=num_jobs)(
+             for kind in ["standard", "adversarial", "second_best"]]
+if num_jobs > 1:
+    logging.info("Using joblib...")
+    results = Parallel(n_jobs=num_jobs)(
         delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
-        for alpha, kind, temperature in jobs):
+        for alpha, kind, temperature in jobs)
+else:
+    results = [run_experiment(alpha, kind, epsilons, temperature=temperature)
+               for alpha, kind, temperature in jobs]
+for _, alpha, kind, temperature, _, _, acc_test, accs, _ in results:
     for epsilon, acc in zip(epsilons, accs):
-        df.append(dict(alpha=alpha, epsilon=epsilon, acc=acc, kind=kind,
-                       temperature=temperature))
+        df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
+                       kind=kind, temperature=temperature))
 df = pd.DataFrame(df)
-results_file = "_results_%s_experiment.csv" % experiment_name
-df.to_csv(results_file)
+results_file = "%s_%s_results_%s_experiment_%s_attack.csv" % (
+    dataset, model, experiment_name, attack_method)
+df.to_csv(results_file, sep=",")
 logging.info("Results written to file: %s" % results_file)
