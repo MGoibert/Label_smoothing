@@ -222,13 +222,20 @@ def test_model(model, test_loader):
 
 # -----------------------
 
-def attack_fgsm(data, epsilon, data_grad, lims=(-1, 1)):
+def attack_fgsm(data, epsilons, data_grad, lims=(-1, 1)):
     """
     Run the FGSM method attack on a single data point using espilon.
     Returns the perturbated data.
+
+    Parameters
+    ----------
+    epsilons: list-like
     """
+    # assert 0  # XXX rm
     sign_data_grad = data_grad.sign()
-    perturbed_data = data + epsilon * sign_data_grad
+    perturbed_data = [data + epsilon * sign_data_grad
+                      for epsilon in epsilons]  # XXX really need loop ??
+    perturbed_data = torch.stack(perturbed_data, dim=0)  # XXX avoid this ???
     perturbed_data = torch.clamp(perturbed_data, *lims)
 
     return perturbed_data
@@ -536,17 +543,21 @@ def attack_triangular(data, epsilon, r, lims=(-1, 1)):
 
 
 def run_attack(model, test_loader, alpha, kind, temperature,
-               epsilon, loss_func, num_classes=None, lims=(0, 1),
+               epsilons, loss_func, num_classes=None, lims=(0, 1),
                attack_method=None):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
+
+    Parameters
+    ----------
+    epsilons: list-like
     """
 
     model.eval()
-    correct = 0
-    adv_examples = []
-
+    correct = {}
+    adv_examples = {}
+    print("Running attack")
     for data, target in test_loader:
 
         data, target = data.to(device), target.to(device)
@@ -558,17 +569,23 @@ def run_attack(model, test_loader, alpha, kind, temperature,
         # Prediction (original data)
         init_pred = output.argmax(1, keepdim=True)
 
-        if init_pred.item() != target.item():
-            continue  # If the model is already wrong, continue
-
         if attack_method == "FGSM":
             loss = loss_func(output, target_smooth)
             model.zero_grad()
             loss.backward()
-            data_grad = data.grad.data
-            perturbed_data = attack_fgsm(data, epsilon, data_grad, lims=lims)
+
+            if True:
+                data_grad = data.grad.data
+                perturbed_data = attack_fgsm(data, epsilons, data_grad,
+                                             lims=lims)
+                perturbed_data = perturbed_data.squeeze(1)  # XXX ???
+            else:
+                data_grad = data.grad.data
+                perturbed_data = attack_fgsm(data, epsilons, data_grad, lims=lims)
 
         elif attack_method == "BIM":
+            if len(epsilons) > 1:
+                raise NotImplemented
             model.zero_grad()
             data.requires_grad = True
             perturbed_data = attack_BIM(data, target_smooth, model, loss_func,
@@ -579,6 +596,8 @@ def run_attack(model, test_loader, alpha, kind, temperature,
                                       num_classes=num_classes)
 
         elif attack_method == "CW":
+            if len(epsilons) > 1:
+                raise NotImplemented
             perturbed_data = CW_attack(data, target, model, binary_search_steps=5,
             max_iterations=200, confidence=0, learning_rate=0.05, initial_c=1e-2,
             lims=lims)
@@ -591,27 +610,34 @@ def run_attack(model, test_loader, alpha, kind, temperature,
             perturbed_data = attack_triangular(data, epsilon, r)
 
         output = model(perturbed_data)
-        # Prediction (perturbated data)
-        final_pred = output.argmax(1, keepdim=True)
 
         # Check for success
-        if final_pred.item() == target.item():
-            correct += 1
-            # Special case for saving 0 epsilon examples
-            if (epsilon == 0) and (len(adv_examples) < 5):
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append(
-                    (init_pred.item(), final_pred.item(), adv_ex))
-        else:
-            # Save some adv examples for visualization later
-            if len(adv_examples) < 5:
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append(
-                    (init_pred.item(), final_pred.item(), adv_ex))
+        for epsilon, pdata, o in zip(epsilons, perturbed_data, output):
+            # Prediction (perturbated data)
+            correct[epsilon] = correct.get(epsilon, 0)
+            final_pred = o.argmax(keepdim=True)
+            if epsilon not in adv_examples:
+                adv_examples[epsilon] = []
+            if final_pred.item() == target.item():
+                correct[epsilon] += 1
+                # Special case for saving 0 epsilon examples
+                if (epsilon == 0) and (len(adv_examples) < 5):
+                    adv_ex = pdata.squeeze().detach().cpu().numpy()
+                    adv_examples[epsilon].append(
+                        (init_pred.item(), final_pred.item(), adv_ex))
+            else:
+                # Save some adv examples for visualization later
+                if len(adv_examples[epsilon]) < 5:
+                    adv_ex = pdata.squeeze().detach().cpu().numpy()
+                    adv_examples[epsilon].append(
+                        (init_pred.item(), final_pred.item(), adv_ex))
 
-    final_acc = correct / float(len(test_loader))
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon,
-                                        correct, len(test_loader), final_acc))
+    final_acc = {}
+    for epsilon in epsilons:
+        final_acc[epsilon] = correct[epsilon] / float(len(test_loader))
+        print("Epsilon: %.3f\tTest Accuracy = %i / %i = %.2f" % (
+            epsilon, correct[epsilon], len(test_loader),
+            final_acc[epsilon]))
 
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
