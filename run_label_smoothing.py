@@ -3,7 +3,8 @@
 """
 Created on Wed Feb 13 14:05:17 2019
 
-@author: m.goibert
+@author: m.goibert,
+         Elvis Dohmatob <gmdopp@gmail.com>
 """
 
 
@@ -224,7 +225,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         net0 = ResNet18()
     net0 = net0.to(device)
 
-    print("Kind = {} \n".format(kind))
+    print("ls Kind = {} \n".format(kind))
     print("alpha = {}".format(alpha))
 
     if False:
@@ -248,8 +249,8 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 
     for epsilon in epsilons:
         acc_adv = accs_adv[epsilon]
-        ex_adv = exs_adv[epsilon]
-        print("epsilon = %s" % epsilon)
+        # ex_adv = exs_adv[epsilon]
+        # print("epsilon = %s" % epsilon)
         accuracy_adv.append(acc_adv)
     print("Execution time = %.2f sec" % delta_time)
     return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,

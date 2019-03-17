@@ -1,3 +1,6 @@
+"""
+Author: Elvis Dohmatob <gmdopp@gmail.com>
+"""
 import torch.nn as nn
 
 

@@ -6,14 +6,6 @@ import sys
 import logging
 import argparse
 
-from tqdm import tqdm
-
-import numpy as np
-
-import torch
-import torch.optim as optim
-import torch.nn.functional as F
-
 # config
 # torch.set_default_tensor_type(torch.DoubleTensor)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
