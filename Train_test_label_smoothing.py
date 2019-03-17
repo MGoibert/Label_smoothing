@@ -3,7 +3,8 @@
 """
 Created on Wed Feb 13 13:19:48 2019
 
-@author: m.goibert
+@author: m.goibert,
+         Elvis Dohmatob <gmdopp@gmail.com>
 """
 
 """
@@ -222,29 +223,18 @@ def test_model(model, test_loader):
 
 # -----------------------
 
-def attack_fgsm(data, epsilons, data_grad, lims=(-1, 1)):
+def attack_fgsm(data, epsilon, data_grad, lims=(-1, 1)):
     """
     Run the FGSM method attack on a single data point using espilon.
     Returns the perturbated data.
-
-    Parameters
-    ----------
-    epsilons: list-like
     """
-    # assert 0  # XXX rm
-    sign_data_grad = data_grad.sign()
-    perturbed_data = [data + epsilon * sign_data_grad
-                      for epsilon in epsilons]  # XXX really need loop ??
-    perturbed_data = torch.stack(perturbed_data, dim=0)  # XXX avoid this ???
-    perturbed_data = torch.clamp(perturbed_data, *lims)
-
-    return perturbed_data
+    return torch.clamp(data + epsilon * data_grad.sign(), *lims)
 
 
 # -----------------------
 
 
-def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
+def attack_BIM(data, target, model, loss_func, epsilon, eps_iter=None,
                num_iter=4, lims=(-1, 1)):
     """
     BIM (or PGD, or I-FGSM) method: iterative algorithm based on FGSM
@@ -253,15 +243,14 @@ def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
         eps_iter = epsilon / num_iter
 
     x_adv = Variable(data.data, requires_grad=True)
-    target_smooth = target_smooth.detach()
+    target = target.detach()
     for i in range(num_iter):
         x_adv = Variable(x_adv.data, requires_grad=True)
         h_adv = model(x_adv)
-        cost = loss_func(h_adv, target_smooth)
+        cost = loss_func(h_adv, target)
 
         model.zero_grad()
-        if x_adv.grad is not None:
-            x_adv.grad.data.fill_(0)
+        x_adv.grad.data.fill_(0)
         cost.backward()
 
         x_adv.grad.sign_()
@@ -278,8 +267,9 @@ def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
 # -----------------------
 
 
-def DeepFool(image, true_label, model, maxiter=50, lims=(-1, 1), num_classes=10):
-    """  
+def DeepFool(image, true_label, model, maxiter=50, lims=(-1, 1),
+             num_classes=10):
+    """
     Our VGG model accepts images with dimension [B,C,H,W] and also we have
     trained the model with the images normalized with mean and std.
     Therefore the image input to this function is mean ans std normalized.
@@ -553,7 +543,6 @@ def run_attack(model, test_loader, alpha, kind, temperature,
     ----------
     epsilons: list-like
     """
-
     model.eval()
     correct = {}
     num_test = 0
@@ -566,62 +555,65 @@ def run_attack(model, test_loader, alpha, kind, temperature,
         data.requires_grad = True
         output = model(data)
         target_smooth = smooth_label(target, alpha, y_pred=output, kind=kind,
-                            num_classes=num_classes, temperature=temperature)
+                                     num_classes=num_classes,
+                                     temperature=temperature)
         # Prediction (original data)
-        init_pred = output.argmax(1, keepdim=True)
+        init_pred = output.argmax(1)
 
         # XXX really ?
-        mask = init_pred.view(-1) == target
+        ok_mask = init_pred == target
+        if ok_mask.sum() == 0:
+            continue
+        target = target[ok_mask]
 
         if attack_method == "FGSM":
             loss = loss_func(output, target_smooth)
             model.zero_grad()
             loss.backward()
             data_grad = data.grad.data
-            perturbed_data = attack_fgsm(data, epsilons, data_grad,
-                                         lims=lims)
-            perturbed_data = perturbed_data.squeeze(1)  # XXX ???
+            perturbed_data = [attack_fgsm(data, epsilon, data_grad, lims=lims)
+                              for epsilon in epsilons]
+            # perturbed_data = perturbed_data.squeeze(1)  # XXX ???
 
         elif attack_method == "BIM":
-            if len(epsilons) > 1:
-                raise NotImplemented
             model.zero_grad()
             data.requires_grad = True
-            perturbed_data = attack_BIM(data, target_smooth, model, loss_func,
-                                epsilon, eps_iter=None, num_iter=4, lims=lims)
+            perturbed_data = [attack_BIM(data, target_smooth, model, loss_func,
+                                         epsilon, eps_iter=None, num_iter=4,
+                                         lims=lims) for epsilon in epsilons]
 
         elif attack_method == "DeepFool":
-            perturbed_data = DeepFool(data, target, model, maxiter=50, lims=lims,
-                                      num_classes=num_classes)
-
+            perturbed_data = DeepFool(data, target, model, maxiter=50,
+                                      lims=lims, num_classes=num_classes)
         elif attack_method == "CW":
-            if len(epsilons) > 1:
-                raise NotImplemented
-            perturbed_data = CW_attack(data, target, model, binary_search_steps=5,
-            max_iterations=200, confidence=0, learning_rate=0.05, initial_c=1e-2,
-            lims=lims)
+            perturbed_data = [CW_attack(data, target, model,
+                                        confidence=epsilon,
+                                        binary_search_steps=5,
+                                        max_iterations=200,
+                                        learning_rate=0.05,
+                                        initial_c=1e-2, lims=lims)
+                              for epsilon in epsilons]
 
         elif attack_method == "triangular":
             theta = [0, 0]
             for i, p in enumerate(model.parameters()):
                 theta[i] = p.data[1] - p.data[0]
             r = theta[1] / theta[0]
-            perturbed_data = attack_triangular(data, epsilon, r)
+            perturbed_data = attack_triangular(data, epsilons, r)
 
+        perturbed_data = torch.stack(perturbed_data, dim=0)
         output = model(perturbed_data)
-
-        # XXX unstack stuff
-        shape = [len(data), len(epsilons)] + list(output.shape)[1:]
-        output = output.reshape(shape)
-        output = output.permute(1, 0, 2)
+        output = output.view(len(epsilons), len(data), *output.shape[1:])
+        output = output[:, ok_mask]
 
         # Check for success
         for epsilon, pdata, o in zip(epsilons, perturbed_data, output):
             # Prediction (perturbated data)
             correct[epsilon] = correct.get(epsilon, 0)
-            final_pred = o.argmax(1, keepdim=True)
-            correct[epsilon] += ((final_pred.view(-1) == target) * mask).sum().item()
-            
+            # final_pred = o.argmax(1, keepdim=True)
+            final_pred = o.argmax(1)
+            correct[epsilon] += (final_pred == target).sum().item()
+
             # XXX uncomment
             # if epsilon not in adv_examples:
             #     adv_examples[epsilon] = []
