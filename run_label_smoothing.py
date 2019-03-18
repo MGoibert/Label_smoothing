@@ -173,7 +173,7 @@ train_loader = torch.utils.data.DataLoader(dataset=train_set,
                                            batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(dataset=test, shuffle=True,
                                           batch_size=test_batch_size)
-val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=100,
+val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=len(val_data),
                                          shuffle=True)
 # Convert tensors into test_loader into double tensors
 test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
@@ -284,7 +284,11 @@ for _, alpha, kind, temperature, _, _, acc_test, accs, _ in results:
         df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
                        kind=kind, temperature=temperature))
 df = pd.DataFrame(df)
-results_file = "%s_%s_results_%s_experiment_%s_attack.csv" % (
+results_file = "res_dataframes/%s_%s_results_%s_exp_%s_attack.csv" % (
     dataset, model, experiment_name, attack_method)
+
+if not os.path.exists("res_dataframes/"):
+    os.makedirs("res_dataframes/")
+
 df.to_csv(results_file, sep=",")
 print("Results written to file: %s" % results_file)
