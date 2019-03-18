@@ -569,8 +569,6 @@ def run_attack(model, test_loader, alpha, kind, temperature,
     for batch_idx, (data, target) in enumerate(test_loader):
         num_test += len(data)
         data, target = data.to(device), target.to(device)
-
-        data.requires_grad = True
         output = model(data)
 
         # Prediction (original data)
@@ -581,13 +579,15 @@ def run_attack(model, test_loader, alpha, kind, temperature,
         if ok_mask.sum() == 0:
             continue
         data = data[ok_mask]
+        data.requires_grad = True
         target = target[ok_mask]
+        output = model(data)
 
         if attack_method in ["FGSM", "BIM"]:
             target_smooth = smooth_label(target, alpha, y_pred=output, kind=kind,
                                          num_classes=num_classes,
                                          temperature=temperature)
-            target_smooth = target_smooth[ok_mask]
+            #target_smooth = target_smooth[ok_mask]
 
         if attack_method == "FGSM":
             loss = loss_func(output, target_smooth)
