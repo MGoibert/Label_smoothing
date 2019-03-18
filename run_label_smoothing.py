@@ -188,7 +188,8 @@ num_classes = 10
 num_epsilons = args.num_epsilons
 alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
-epsilons = np.linspace(0, args.max_epsilon, num=args.num_epsilons)
+epsilons = np.linspace(args.min_epsilon, args.max_epsilon,
+                       num=args.num_epsilons)
 experiment_name = args.experiment_name
 if experiment_name == "temperature":
     temperatures = np.logspace(-4, 3, num=8)
@@ -225,6 +226,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         net0 = ResNet18()
     net0 = net0.to(device)
 
+    print(net0)
     print("ls Kind = {} \n".format(kind))
     print("alpha = {}".format(alpha))
 
