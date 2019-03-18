@@ -3,7 +3,8 @@
 """
 Created on Wed Feb 13 14:05:17 2019
 
-@author: m.goibert
+@author: m.goibert,
+         Elvis Dohmatob <gmdopp@gmail.com>
 """
 
 
@@ -109,7 +110,8 @@ print("device run = ", device)
 # Parse command-line arguments
 args = parse_cmdline_args()
 dataset = args.dataset
-
+batch_size = args.batch_size
+test_batch_size = args.test_batch_size
 
 # Dataset
 
@@ -118,7 +120,6 @@ if dataset == "MNIST":
     # -------------- Import MNIST
 
     root = './data'
-    batch_size = args.batch_size
     trans = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
 
@@ -170,8 +171,8 @@ elif dataset == "CIFAR10":
 
 train_loader = torch.utils.data.DataLoader(dataset=train_set,
                                            batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(dataset=test, batch_size=1,
-                                          shuffle=True)
+test_loader = torch.utils.data.DataLoader(dataset=test, shuffle=True,
+                                          batch_size=test_batch_size)
 val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=100,
                                          shuffle=True)
 # Convert tensors into test_loader into double tensors
@@ -187,7 +188,8 @@ num_classes = 10
 num_epsilons = args.num_epsilons
 alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
-epsilons = np.linspace(0, args.max_epsilon, num=args.num_epsilons)
+epsilons = np.linspace(args.min_epsilon, args.max_epsilon,
+                       num=args.num_epsilons)
 experiment_name = args.experiment_name
 if experiment_name == "temperature":
     temperatures = np.logspace(-4, 3, num=8)
@@ -224,28 +226,35 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         net0 = ResNet18()
     net0 = net0.to(device)
 
-    logging.info("Kind = {} \n".format(kind))
-    logging.info("alpha = {}".format(alpha))
-    net, loss_history, acc_tr = train_model_smooth(
-        net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
-        kind=kind, num_classes=num_classes, temperature=temperature)
-    acc_test = test_model(net, test_loader)
+    print(net0)
+    print("ls Kind = {} \n".format(kind))
+    print("alpha = {}".format(alpha))
 
-    logging.info("Accuracy (training) = %g " % acc_tr)
-    logging.info("Accuracy (Test) = {} ".format(acc_test))
+    if False:
+        net = net0
+    else:
+        net, loss_history, acc_tr = train_model_smooth(
+            net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
+            kind=kind, num_classes=num_classes, temperature=temperature)
+        acc_test = test_model(net, test_loader)
 
+        print("Accuracy (training) = %g " % acc_tr)
+        print("Accuracy (Test) = {} ".format(acc_test))
+
+    # run attack (possibly massively in parallel over test data and epsilons)
     accuracy_adv = []
-    for epsilon in epsilons:
-        logging.info("epsilon = %s" % epsilon)
-        start_time = time.time()
-        acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
-                                     epsilon, loss_func, num_classes, lims=lims,
-                                     attack_method=attack_method)
-        accuracy_adv.append(acc_adv)
-        end_time = time.time()
-        delta_time = (end_time - start_time)
-        logging.info("Execution time = %.2f sec" % delta_time)
+    t0 = time.time()
+    accs_adv, exs_adv = run_attack(net, test_loader, alpha, kind, temperature,
+                                   epsilons, loss_func, num_classes, lims=lims,
+                                   attack_method=attack_method)
+    delta_time = time.time() - t0
 
+    for epsilon in epsilons:
+        acc_adv = accs_adv[epsilon]
+        # ex_adv = exs_adv[epsilon]
+        # print("epsilon = %s" % epsilon)
+        accuracy_adv.append(acc_adv)
+    print("Execution time = %.2f sec" % delta_time)
     return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,
             accuracy_adv, delta_time)
 
@@ -263,7 +272,7 @@ if experiment_name != "temperature":
     jobs += [(alpha, kind, None) for alpha in alphas
              for kind in ["standard", "adversarial", "second_best"]]
 if num_jobs > 1:
-    logging.info("Using joblib...")
+    print("Using joblib...")
     results = Parallel(n_jobs=num_jobs)(
         delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
         for alpha, kind, temperature in jobs)
@@ -278,4 +287,4 @@ df = pd.DataFrame(df)
 results_file = "%s_%s_results_%s_experiment_%s_attack.csv" % (
     dataset, model, experiment_name, attack_method)
 df.to_csv(results_file, sep=",")
-logging.info("Results written to file: %s" % results_file)
+print("Results written to file: %s" % results_file)
