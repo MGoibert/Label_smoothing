@@ -40,6 +40,9 @@ def parse_cmdline_args():
         '--num_alphas', type=int, default=11,
         help="number of alphas to use in smoothing")
     parser.add_argument(
+        '--min_epsilon', type=float, default=0.,
+        help="minimum adversarial perturbation in experiments")
+    parser.add_argument(
         '--max_epsilon', type=float, default=.25,
         help="maximum adversarial perturbation in experiments")
     parser.add_argument(
