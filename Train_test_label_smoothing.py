@@ -148,8 +148,8 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         filter(lambda p: p.requires_grad, model.parameters()), lr=0.1)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='max', patience=5, verbose=True,
-            factor=0.8)
+            optimizer, mode='min', patience=3, verbose=True,
+            factor=0.5)
 
     loss_history = []
 
@@ -636,7 +636,7 @@ def run_attack(model, test_loader, alpha, kind, temperature,
             perturbed_data = attack_triangular(data, epsilons, r)
 
         perturbed_data = torch.stack(perturbed_data, dim=0)
-        output = model(perturbed_data)
+        output = model(perturbed_data.view(-1, *list(data[0].size())))
         output = output.view(len(epsilons), len(data), *output.shape[1:])
 
         output = output
