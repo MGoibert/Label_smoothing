@@ -3,7 +3,8 @@
 """
 Created on Wed Feb 13 13:19:48 2019
 
-@author: m.goibert
+@author: m.goibert,
+         Elvis Dohmatob <gmdopp@gmail.com>
 """
 
 """
@@ -227,17 +228,13 @@ def attack_fgsm(data, epsilon, data_grad, lims=(-1, 1)):
     Run the FGSM method attack on a single data point using espilon.
     Returns the perturbated data.
     """
-    sign_data_grad = data_grad.sign()
-    perturbed_data = data + epsilon * sign_data_grad
-    perturbed_data = torch.clamp(perturbed_data, *lims)
-
-    return perturbed_data
+    return torch.clamp(data + epsilon * data_grad.sign(), *lims)
 
 
 # -----------------------
 
 
-def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
+def attack_BIM(data, target, model, loss_func, epsilon, eps_iter=None,
                num_iter=4, lims=(-1, 1)):
     """
     BIM (or PGD, or I-FGSM) method: iterative algorithm based on FGSM
@@ -246,15 +243,14 @@ def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
         eps_iter = epsilon / num_iter
 
     x_adv = Variable(data.data, requires_grad=True)
-    target_smooth = target_smooth.detach()
+    target = target.detach()
     for i in range(num_iter):
         x_adv = Variable(x_adv.data, requires_grad=True)
         h_adv = model(x_adv)
-        cost = loss_func(h_adv, target_smooth)
+        cost = loss_func(h_adv, target)
 
         model.zero_grad()
-        if x_adv.grad is not None:
-            x_adv.grad.data.fill_(0)
+        x_adv.grad.data.fill_(0)
         cost.backward()
 
         x_adv.grad.sign_()
@@ -271,8 +267,9 @@ def attack_BIM(data, target_smooth, model, loss_func, epsilon, eps_iter=None,
 # -----------------------
 
 
-def DeepFool(image, true_label, model, maxiter=50, lims=(-1, 1), num_classes=10):
-    """  
+def DeepFool(image, true_label, model, maxiter=50, lims=(-1, 1),
+             num_classes=10):
+    """
     Our VGG model accepts images with dimension [B,C,H,W] and also we have
     trained the model with the images normalized with mean and std.
     Therefore the image input to this function is mean ans std normalized.
@@ -438,17 +435,26 @@ def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0, lims=(
     """
 
     # Index of original class
-    c_min = target.item()
+    if False:
+        adv_x = adv_x[:1]
+        reconstruct_data = reconstruct_data[:1]
+        logits = logits[:1]
+    c_min = target.data.numpy()  # .item()
+
+    # c_min = target.data.numpy()
 
     # We need the index of the largest logits that does not correspond to the
     # original class
     # index of all the logits exept the original class
     ind = np.array(
-        [i for i in range(len(logits.squeeze())) if i != target.item()])
+        [[i for i in range(len(logits[t].squeeze())) if i != target[t].item()]
+         for t in range(target.shape[0])])
     # index of the largest logit in the list of all logits exept the one of
     # the original class. The list of logits has been modified, so the values
     # of the index too.
-    c_max = logits.squeeze()[ind].argmax(-1, keepdim=True).item()
+    c_max = [l.squeeze()[i].argmax(-1, keepdim=True).item()
+             for l, i in zip(logits, ind)]
+    c_max = np.array(c_max)
     # the indices after the original class have been shifted one place to the
     # left. We need to shift back to the right the value of c_max iff c_max
     # is superior or equal to the index of the original class (c_min)
@@ -456,12 +462,15 @@ def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0, lims=(
 
     # Constraint part of the objective function: corresponds to the constraint
     # that the classifier must misclassified the adversarial example
-    is_adv_loss = max(
-        logits.squeeze()[c_min] - logits.squeeze()[c_max] + confidence, 0)
+    i = range(len(logits))
+    is_adv_loss = np.maximum(
+        (logits[i, c_min] - logits[i, c_max] + confidence).data.numpy(), 0)
+    is_adv_loss = torch.from_numpy(is_adv_loss).to(adv_x.device)
 
     # Perturbation size part of the objective function: corresponds to the
     # minimization of the distance between the "true" data and the adv. data.
-    l2_dist = torch.sum((adv_x - reconstruct_data)**2) / (lims[1] - lims[0])**2
+    scale = (lims[1] - lims[0]) ** 2
+    l2_dist = ((adv_x - reconstruct_data) **2).sum(1).sum(1).sum(1) / scale
 
     # Objective function
     tot_dist = l2_dist + c * is_adv_loss
@@ -476,43 +485,48 @@ def CW_attack(data, target, model, binary_search_steps=5, max_iterations=200,
     Carlini & Wagner attack.
     Untargeted implementation, L2 setup.
     """
-
+    batch_size = len(data)
     att_original = _to_attack_space(data.detach(), lims=lims)
     reconstruct_original = _to_model_space(att_original, lims=lims)
 
-    c = initial_c
-    lower_bound = 0
-    upper_bound = np.inf
+    c = torch.ones(batch_size) * initial_c
+    lower_bound = np.zeros(batch_size)
+    upper_bound = np.ones(batch_size) * np.inf
     best_x = data
 
     for binary_search_step in range(binary_search_steps):
-        perturb = torch.zeros_like(att_original, requires_grad=True)
-        optimizer_CW = torch.optim.Adam([perturb], lr=learning_rate)
-        found_adv = False
+        perturb = [torch.zeros_like(att_original[t], requires_grad=True)
+                   for t in range(batch_size)]
+        optimizer_CW = [torch.optim.Adam([perturb[t]], lr=learning_rate)
+                        for t in range(batch_size)]
+        perturb = torch.cat([perturb_.unsqueeze(0) for perturb_ in perturb])
+        found_adv = torch.zeros(batch_size).byte()
 
         for iteration in range(max_iterations):
+            print(iteration)
             x = _to_model_space(att_original + perturb, lims=lims)
             logits = _soft_to_logit(model(x))
             cost = _fct_to_min(x, reconstruct_original, target, logits, c,
                                confidence, lims=lims)
-            optimizer_CW.zero_grad()
-            cost.backward()
-            optimizer_CW.step()
+            for t in range(batch_size):
+                optimizer_CW[t].zero_grad()
+                cost[t].backward(retain_graph=True)
+                optimizer_CW[t].step()
+                if logits[t].squeeze().argmax(-1, keepdim=True) != target[t]:
+                    found_adv[t] = 1
+                else:
+                    found_adv[t] = 0
 
-            if logits.squeeze().argmax(-1, keepdim=True) != target:
-                found_adv = True
+        for t in range(batch_size):
+            if found_adv[t]:
+                upper_bound[t] = c[t]
+                best_x[t] = x[t]
             else:
-                found_adv = False
-
-        if found_adv == True:
-            upper_bound = c
-            best_x = x
-        else:
-            lower_bound = c
-        if upper_bound == np.inf:
-            c = 10 * c
-        else:
-            c = (lower_bound + upper_bound) / 2
+                lower_bound[t] = c[t]
+            if upper_bound[t] == np.inf:
+                c[t] = 10 * c[t]
+            else:
+                c[t] = (lower_bound[t] + upper_bound[t]) / 2
 
     return best_x
 
@@ -536,82 +550,129 @@ def attack_triangular(data, epsilon, r, lims=(-1, 1)):
 
 
 def run_attack(model, test_loader, alpha, kind, temperature,
-               epsilon, loss_func, num_classes=None, lims=(0, 1),
+               epsilons, loss_func, num_classes=None, lims=(0, 1),
                attack_method=None):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
+
+    Parameters
+    ----------
+    epsilons: list-like
+        For CW attacks, this is interpreted as a list of confidences
     """
-
     model.eval()
-    correct = 0
-    adv_examples = []
-
-    for data, target in test_loader:
-
+    correct = {}
+    num_test = 0
+    adv_examples = {}
+    print("Running attack")
+    for batch_idx, (data, target) in enumerate(test_loader):
+        num_test += len(data)
         data, target = data.to(device), target.to(device)
 
         data.requires_grad = True
         output = model(data)
-        target_smooth = smooth_label(target, alpha, y_pred=output, kind=kind,
-                            num_classes=num_classes, temperature=temperature)
-        # Prediction (original data)
-        init_pred = output.argmax(1, keepdim=True)
 
-        if init_pred.item() != target.item():
-            continue  # If the model is already wrong, continue
+        # Prediction (original data)
+        init_pred = output.argmax(1)
+
+        # XXX really ?
+        ok_mask = init_pred == target
+        if ok_mask.sum() == 0:
+            continue
+        data = data[ok_mask]
+        target = target[ok_mask]
+
+        if attack_method in ["FGSM", "BIM"]:
+            target_smooth = smooth_label(target, alpha, y_pred=output, kind=kind,
+                                         num_classes=num_classes,
+                                         temperature=temperature)
+            target_smooth = target_smooth[ok_mask]
 
         if attack_method == "FGSM":
             loss = loss_func(output, target_smooth)
             model.zero_grad()
             loss.backward()
             data_grad = data.grad.data
-            perturbed_data = attack_fgsm(data, epsilon, data_grad, lims=lims)
+            perturbed_data = [attack_fgsm(data, epsilon, data_grad, lims=lims)
+                              for epsilon in epsilons]
+            # perturbed_data = perturbed_data.squeeze(1)  # XXX ???
 
         elif attack_method == "BIM":
             model.zero_grad()
             data.requires_grad = True
-            perturbed_data = attack_BIM(data, target_smooth, model, loss_func,
-                                epsilon, eps_iter=None, num_iter=4, lims=lims)
+            perturbed_data = [attack_BIM(data, target_smooth, model, loss_func,
+                                         epsilon, eps_iter=None, num_iter=4,
+                                         lims=lims) for epsilon in epsilons]
 
         elif attack_method == "DeepFool":
-            perturbed_data = DeepFool(data, target, model, maxiter=50, lims=lims,
-                                      num_classes=num_classes)
-
+            perturbed_data = DeepFool(data, target, model, maxiter=50,
+                                      lims=lims, num_classes=num_classes)
         elif attack_method == "CW":
-            perturbed_data = CW_attack(data, target, model, binary_search_steps=5,
-            max_iterations=200, confidence=0, learning_rate=0.05, initial_c=1e-2,
-            lims=lims)
+            if True:
+                import sys
+                sys.path.append("externals/rwightman/attacks")
+                from attack_carlini_wagner_l2 import AttackCarliniWagnerL2
+                perturbed_data = [AttackCarliniWagnerL2(
+                    targeted=False, cuda=torch.cuda.is_available(),
+                    clamp_fn=None, num_classes=num_classes,
+                    confidence=epsilon).run(model, data.detach(), target,
+                                            batch_idx=batch_idx)
+                                  for epsilon in epsilons]
+            else:
+                perturbed_data = [CW_attack(data, target, model,
+                                            confidence=epsilon,
+                                            binary_search_steps=5,
+                                            max_iterations=200,
+                                            learning_rate=0.05,
+                                            initial_c=1e-2, lims=lims)
+                                  for epsilon in epsilons]
 
         elif attack_method == "triangular":
             theta = [0, 0]
             for i, p in enumerate(model.parameters()):
                 theta[i] = p.data[1] - p.data[0]
             r = theta[1] / theta[0]
-            perturbed_data = attack_triangular(data, epsilon, r)
+            perturbed_data = attack_triangular(data, epsilons, r)
 
+        perturbed_data = torch.stack(perturbed_data, dim=0)
         output = model(perturbed_data)
-        # Prediction (perturbated data)
-        final_pred = output.argmax(1, keepdim=True)
+        output = output.view(len(epsilons), len(data), *output.shape[1:])
+
+        output = output
+        target = target
 
         # Check for success
-        if final_pred.item() == target.item():
-            correct += 1
-            # Special case for saving 0 epsilon examples
-            if (epsilon == 0) and (len(adv_examples) < 5):
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append(
-                    (init_pred.item(), final_pred.item(), adv_ex))
-        else:
-            # Save some adv examples for visualization later
-            if len(adv_examples) < 5:
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append(
-                    (init_pred.item(), final_pred.item(), adv_ex))
+        for epsilon, pdata, o in zip(epsilons, perturbed_data, output):
+            # Prediction (perturbated data)
+            correct[epsilon] = correct.get(epsilon, 0)
+            # final_pred = o.argmax(1, keepdim=True)
+            final_pred = o.argmax(1)
+            correct[epsilon] += (final_pred == target).sum().item()
 
-    final_acc = correct / float(len(test_loader))
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon,
-                                        correct, len(test_loader), final_acc))
+            # XXX uncomment
+            # if epsilon not in adv_examples:
+            #     adv_examples[epsilon] = []
+            # if final_pred.item() == target.item():
+            #     correct[epsilon] += 1
+            #     # Special case for saving 0 epsilon examples
+            #     if (epsilon == 0) and (len(adv_examples) < 5):
+            #         adv_ex = pdata.squeeze().detach().cpu().numpy()
+            #         adv_examples[epsilon].append(
+            #             (init_pred.item(), final_pred.item(), adv_ex))
+            # else:
+            #     # Save some adv examples for visualization later
+            #     if len(adv_examples[epsilon]) < 5:
+            #         adv_ex = pdata.squeeze().detach().cpu().numpy()
+            #         adv_examples[epsilon].append(
+            #             (init_pred.item(), final_pred.item(), adv_ex))
+
+    final_acc = {}
+    for epsilon in epsilons:
+        final_acc[epsilon] = correct[epsilon] / float(num_test)
+        print("Epsilon: %.3f\tTest Accuracy = %i / %i = %f" % (
+            epsilon, correct[epsilon], num_test,
+            final_acc[epsilon]))
 
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples

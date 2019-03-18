@@ -6,14 +6,6 @@ import sys
 import logging
 import argparse
 
-from tqdm import tqdm
-
-import numpy as np
-
-import torch
-import torch.optim as optim
-import torch.nn.functional as F
-
 # config
 # torch.set_default_tensor_type(torch.DoubleTensor)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -36,6 +28,9 @@ def parse_cmdline_args():
         '--batch_size', type=int, default=100,
         help="batch size for SGD")
     parser.add_argument(
+        '--test_batch_size', type=int, default=1,
+        help="batch size for testing")
+    parser.add_argument(
         '--num_epochs', type=int, default=7,
         help="number of passes to make over data")
     parser.add_argument(
@@ -44,6 +39,9 @@ def parse_cmdline_args():
     parser.add_argument(
         '--num_alphas', type=int, default=11,
         help="number of alphas to use in smoothing")
+    parser.add_argument(
+        '--min_epsilon', type=float, default=0.,
+        help="minimum adversarial perturbation in experiments")
     parser.add_argument(
         '--max_epsilon', type=float, default=.25,
         help="maximum adversarial perturbation in experiments")
