@@ -21,7 +21,6 @@ from operator import itemgetter
 
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
-                                        attack_fgsm, attack_triangular,
                                         run_attack)
 from utils import parse_cmdline_args
 
@@ -98,11 +97,13 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     print("Accuracy (Test) = ", test_model(net, test_loader))
 
     accuracy_adv = []
+    accs_adv, exs_adv = run_attack(net, test_loader, alpha, kind, temperature,
+                                   epsilons, loss_func, num_classes=None,
+                                   attack_method="triangular")
+
+    accuracy_adv = []
     for epsilon in epsilons:
-        print("epsilon = ", epsilon)
-        acc_adv, ex_adv = run_attack(net, test_loader, alpha, kind, temperature,
-                                     epsilon, loss_func, num_classes=None,
-                                     attack_method="triangular")
+        acc_adv = accs_adv[epsilon]
         accuracy_adv.append(acc_adv)
 
     return (net, alpha, kind, temperature, loss_history, accuracy_adv)
