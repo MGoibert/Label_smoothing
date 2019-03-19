@@ -35,8 +35,7 @@ from joblib import delayed, Parallel
 
 from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
-                                        attack_fgsm, attack_BIM, DeepFool,
-                                        CW_attack, run_attack, device)
+                                        run_attack, device)
 from utils import parse_cmdline_args
 from lenet import LeNet, ResNet18
 
@@ -228,7 +227,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 
     print(net0)
     print("ls Kind = {} \n".format(kind))
-    print("alpha = {}".format(alpha))
+    print("alpha = %.2f" % alpha)
 
     if False:
         net = net0
