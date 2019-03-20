@@ -38,11 +38,6 @@ class _BaseAttack(object):
     def __call__(self, *args, **kwargs):
         return self.run(*args, **kwargs)
 
-    def _check_pred(self, data, pred):
-        if pred is None:
-            pred = self.model(data)
-        return pred
-
     def clamp(self, data):
         if hasattr(self.lims, "__call__"):
             return self.lims(data)
@@ -58,16 +53,17 @@ class FGSM(_BaseAttack):
         super(FGSM, self).__init__(model, lims=lims)
         self.loss_func = loss_func
 
-    def attack(self, data, epsilon, data_grad):
-        return self.clamp(data + epsilon * data_grad.sign())
-
-    def run(self, data, target, epsilon, pred=None):
-        data.requires_grad = True
-        pred = self._check_pred(data, pred)
+    def run(self, data, target, epsilon, pred=None, retain_graph=True):
+        """
+        XXX `retain_graph=True` is needed in case caller is calling this
+        function in a loop, etc.
+        """
+        if pred is None:
+            pred = self.model(data)
         loss = self.loss_func(pred, target)
         self.model.zero_grad()
-        loss.backward()
-        return self.attack(data, epsilon, data.grad.data)
+        loss.backward(retain_graph=retain_graph)
+        return self.clamp(data + epsilon * data.grad.data.sign())
 
 
 class BIM(_BaseAttack):
@@ -79,10 +75,10 @@ class BIM(_BaseAttack):
         self.loss_func = loss_func
 
     def run(self, data, target, epsilon, epsilon_iter=None):
-        if epsilon_iter == None:
+        target = target.detach()
+        if epsilon_iter is None:
             epsilon_iter = epsilon / self.num_iter
 
-        target = target.detach()
         x_adv = data
         for _ in range(self.num_iter):
             x_adv = Variable(x_adv.data, requires_grad=True)
@@ -93,7 +89,7 @@ class BIM(_BaseAttack):
 
             # backward pass
             self.model.zero_grad()
-            loss.backward()
+            loss.backward(retain_graph=True)
 
             # single-step of FGSM: data <-- x_adv
             x_adv.grad.sign_()  # x_adv.grad <-- x_adv.grad.sign()
@@ -204,3 +200,28 @@ class DeepFool(_BaseAttack):
             loop_i += 1
 
         return self.clamp(pert_image)
+
+
+class TriangularAttack(_BaseAttack):
+    """
+    Run the optimal attack on the Triangular example (linear model)
+    """
+    def __init__(self, model, lims=(-1, 1)):
+        super(TriangularAttack, self).__init__(model, lims=lims)
+
+    def _attack(self, data, epsilon, r):
+        perturbed_data = data - epsilon * (data.item() >= -r.item()
+        ) + epsilon * (data.item() < -r.item())
+        return self.clamp(perturbed_data)
+        return perturbed_data
+
+    def run(self, data, target, epsilon):
+        theta = [0, 0]
+        for i, p in enumerate(self.model.parameters()):
+            theta[i] = p.data[1] - p.data[0]
+        r = theta[1] / theta[0]
+        epsilon_ = torch.from_numpy(epsilon)
+        perturbed_data = self._attack(data, epsilon_, r)
+        if hasattr(epsilon, "__len__"):
+            perturbed_data = list(perturbed_data.t())
+        return perturbed_data

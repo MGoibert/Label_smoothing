@@ -17,8 +17,9 @@ from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.autograd import Variable
 
-from attacks import FGSM, BIM, DeepFool, CW
+from attacks import FGSM, BIM, DeepFool, CW, TriangularAttack
 
 cuda = torch.cuda.is_available()
 logging.info("CUDA Available: {}".format(cuda))
@@ -193,20 +194,9 @@ def test_model(model, test_loader):
     return acc
 
 
-def attack_triangular(data, epsilon, r, lims=(-1, 1)):
-    """
-    Run the optimal attack on the Triangular example (linear model)
-    """
-
-    perturbed_data = data - epsilon * \
-        (data.item() >= -r.item()) + epsilon * (data.item() < -r.item())
-    perturbed_data = torch.clamp(perturbed_data, *lims)
-    return perturbed_data
-
-
-def run_attack(model, test_loader, alpha, kind, temperature,
-               epsilons, loss_func, num_classes=None, lims=(0, 1),
-               attack_method=None, num_iter=100):
+def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
+               alpha=None, kind=None, temperature=None, num_classes=None,
+               lims=(0, 1), num_iter=100):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
@@ -222,68 +212,76 @@ def run_attack(model, test_loader, alpha, kind, temperature,
     adv_examples = {}
 
     print("Running attack")
+    model.eval()
     for batch_idx, (data, target) in enumerate(test_loader):
         num_test += len(data)
+
+        # initial forward pass
         data, target = data.to(device), target.to(device)
+        data.requires_grad = True
         output = model(data)
 
         # Prediction (original data)
         init_pred = output.argmax(1)
-
-        # XXX really ?
         ok_mask = init_pred == target
-        if ok_mask.sum() == 0:
+        num_ok = ok_mask.sum()
+        if num_ok == 0:
             continue
-        data = data[ok_mask]
-        data.requires_grad = True
-        target = target[ok_mask]
-        output = model(data)
 
+        # maybe smooth labels
         if attack_method in ["FGSM", "BIM"]:
+            assert not None in [alpha, kind]
             target_smooth = smooth_label(
                 target, alpha, y_pred=output, num_classes=num_classes,
                 kind=kind, temperature=temperature)
-            # target_smooth = target_smooth[ok_mask]
-        if attack_method == "FGSM":
-            attacker = FGSM(model, loss_func, lims=lims)
-            perturbed_data = [attacker(data, target_smooth, epsilon)
-                              for epsilon in epsilons]
-        elif attack_method == "BIM":
-            attacker = BIM(model, loss_func, lims=lims, num_iter=num_iter)
-            perturbed_data = [attacker(data, target_smooth, epsilon)
-                              for epsilon in epsilons]
-        elif attack_method == "DeepFool":
+        else:
+            target_smooth = target
+
+        # instantiate attacker
+        kwargs = {}
+        if attack_method == "DeepFool":
             attacker = DeepFool(model, lims=lims, num_classes=num_classes,
                                 num_iter=num_iter)
-            perturbed_data = attacker(data, target)
-            perturbed_data = [perturbed_data] * len(epsilons)  # XXX hack
+        elif attack_method == "triangular":
+            attacker = TriangularAttack(model)
+        elif hasattr(attack_method, "__call__"):
+            attacker = attack_method
+        elif attack_method == "FGSM":
+            kwargs["pred"] = output
+            attacker = FGSM(model, loss_func, lims=lims)
+        elif attack_method == "BIM":
+            attacker = BIM(model, loss_func, lims=lims, num_iter=num_iter)
         elif attack_method == "CW":
             attacker = CW(model, targeted=False, num_classes=num_classes,
                           cuda=cuda, lims=lims, num_iter=num_iter)
-            perturbed_data = [attacker.run(data, target, epsilon,
-                                           batch_idx=batch_idx)
+            kwargs["batch_idx"] = batch_idx
+        else:
+            raise NotImplementedError(attack_method)
+
+        # run attacker
+        if attack_method == "DeepFool":
+            perturbed_data = attacker(data, target_smooth, **kwargs)
+            perturbed_data = [perturbed_data] * len(epsilons)  # XXX hack
+        elif attack_method == "triangular":
+            perturbed_data = attacker(data, target_smooth, epsilons, **kwargs)
+        else:
+            perturbed_data = [attacker(data, target_smooth, epsilon, **kwargs)
                               for epsilon in epsilons]
 
-        elif attack_method == "triangular":
-            theta = [0, 0]
-            for i, p in enumerate(model.parameters()):
-                theta[i] = p.data[1] - p.data[0]
-            r = theta[1] / theta[0]
-            epsilons_ = torch.from_numpy(epsilons)
-            perturbed_data = list(attack_triangular(data, epsilons_, r).t())
-
+        # reshape perturbed data
         perturbed_data = torch.stack(perturbed_data, dim=0)
         output = model(perturbed_data.view(-1, *list(data[0].size())))
         output = output.view(len(epsilons), len(data), *output.shape[1:])
 
-        output = output
-        target = target
+        # apply ok_mask
+        perturbed_data = perturbed_data[:, ok_mask]
+        output = output[:, ok_mask]
+        target = target[ok_mask]
 
         # Check for success
-        for epsilon, pdata, o in zip(epsilons, perturbed_data, output):
+        for epsilon, _, o in zip(epsilons, perturbed_data, output):
             # Prediction (perturbated data)
             correct[epsilon] = correct.get(epsilon, 0)
-            # final_pred = o.argmax(1, keepdim=True)
             final_pred = o.argmax(1)
             correct[epsilon] += (final_pred == target).sum().item()
 
