@@ -97,9 +97,10 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     print("Accuracy (Test) = ", test_model(net, test_loader))
 
     accuracy_adv = []
-    accs_adv, exs_adv = run_attack(net, test_loader, alpha, kind, temperature,
-                                   epsilons, loss_func, num_classes=None,
-                                   attack_method="triangular")
+    accs_adv, exs_adv = run_attack(net, test_loader, loss_func, epsilons,
+                                   attack_method="triangular", alpha=alpha,
+                                   kind=kind, temperature=temperature,
+                                   num_classes=None)
 
     accuracy_adv = []
     for epsilon in epsilons:

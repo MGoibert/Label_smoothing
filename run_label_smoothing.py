@@ -70,9 +70,6 @@ class MLPNet(nn.Module):
         x = self.soft(x)
         return x
 
-    def __repr__(self):
-        return "MLP"
-
 
 # LeNet model for CIFAR10
 
@@ -187,6 +184,7 @@ num_classes = 10
 num_epsilons = args.num_epsilons
 alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
+num_iter_attack = args.num_iter_attack
 epsilons = np.linspace(args.min_epsilon, args.max_epsilon,
                        num=args.num_epsilons)
 experiment_name = args.experiment_name
@@ -230,7 +228,8 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     print("alpha = %.2f" % alpha)
 
     if False:
-        net = net0
+        net, loss_history, acc_tr = net0, None, np.nan
+        acc_test = np.nan
     else:
         net, loss_history, acc_tr = train_model_smooth(
             net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
@@ -243,9 +242,11 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     # run attack (possibly massively in parallel over test data and epsilons)
     accuracy_adv = []
     t0 = time.time()
-    accs_adv, exs_adv = run_attack(net, test_loader, alpha, kind, temperature,
-                                   epsilons, loss_func, num_classes, lims=lims,
-                                   attack_method=attack_method)
+    accs_adv, _ = run_attack(net, test_loader, loss_func, epsilons,
+                             attack_method=attack_method, alpha=alpha,
+                             num_classes=num_classes, kind=kind,
+                             temperature=temperature, lims=lims,
+                             num_iter=num_iter_attack)
     delta_time = time.time() - t0
 
     for epsilon in epsilons:
@@ -268,8 +269,9 @@ df = []
 jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
         for temperature in temperatures]
 if experiment_name != "temperature":
-    jobs += [(alpha, kind, None) for alpha in alphas
-             for kind in ["standard", "adversarial", "second_best"]]
+    jobs += [(alpha, kind, None) for kind in ["standard", "adversarial",
+                                              "second_best"]
+             for alpha in alphas]
 if num_jobs > 1:
     print("Using joblib...")
     results = Parallel(n_jobs=num_jobs)(
