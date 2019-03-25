@@ -3,8 +3,6 @@ Synopsis: Various adversarial attacks
 Author: Morgane Goibert,
         Elvis Dohmatob <gmdopp@gmail.com>
 """
-
-import sys
 import copy
 
 import numpy as np
@@ -12,8 +10,7 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
-sys.path.append("/home/elvis/CODE/FORKED/label_smoothing/externals/rwightman/attacks")
-from attack_carlini_wagner_l2 import AttackCarliniWagnerL2
+from externals.rwightman.attacks import AttackCarliniWagnerL2
 
 
 def where(cond, x, y):

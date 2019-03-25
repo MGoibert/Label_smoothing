@@ -125,7 +125,7 @@ def _has_converged(history, convergence_threshold=1e-4, window_size=5):
 def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        learning_rate=0.1, verbose=1, alpha=0, kind="standard",
                        num_classes=None, temperature=0.1, use_lbfgs=False,
-                       enable_early_stopping=False, compute_scores=False):
+                       enable_early_stopping=False, compute_scores=True):
     """
     Training of a model using label smoothing.
     alpha is the parameter calibrating the strenght of the label smoothing
