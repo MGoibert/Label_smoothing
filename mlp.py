@@ -2,6 +2,7 @@
 Author: Elvis Dohmatob <gmdopp@gmail.com>
 """
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class MLP(nn.Module):
@@ -32,3 +33,20 @@ class MLP(nn.Module):
         if self.final_activation is not None:
             z = self.final_activation(z, dim=-1)
         return z
+
+
+class MNISTMLP(nn.Module):
+    def __init__(self):
+        super(MNISTMLP, self).__init__()
+        self.fc1 = nn.Linear(28 * 28, 500)
+        self.fc2 = nn.Linear(500, 256)
+        self.fc3 = nn.Linear(256, 10)
+        self.soft = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = x.view(-1, 28 * 28)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        x = self.soft(x)
+        return x

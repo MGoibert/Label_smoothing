@@ -14,10 +14,11 @@ Creation des fonctions pour faire tourner les algos sur MNIST
 import logging
 from tqdm import tqdm
 
+import numpy as np
+
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
 
 from attacks import FGSM, BIM, DeepFool, CW, TriangularAttack
 
@@ -104,9 +105,27 @@ def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
     return y_
 
 
+def _has_converged(history, convergence_threshold=1e-4, window_size=5):
+    """
+    Checks whether training has converged
+    """
+    history = history[-window_size:]
+    window_size = len(history)
+    relative_change = np.mean(
+        np.abs(np.diff(history)) / np.abs(history[:-1]))
+
+    if relative_change <= convergence_threshold:
+        logging.info(("Convergence reached; average absrel change in loglik in "
+               "%i past iterations: %g" % (window_size, relative_change)))
+        return True
+    else:
+        return False
+
+
 def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
-                       alpha=0, kind="standard", num_classes=None,
-                       temperature=0.1):
+                       learning_rate=0.1, verbose=1, alpha=0, kind="standard",
+                       num_classes=None, temperature=0.1, use_lbfgs=False,
+                       enable_early_stopping=False, compute_scores=False):
     """
     Training of a model using label smoothing.
     alpha is the parameter calibrating the strenght of the label smoothing
@@ -119,59 +138,78 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         - the loss function after each iteration
         - the accuracy on the validation set
     """
-
-    optimizer = optim.SGD(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=0.1)
+    # configure optimizer
+    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    if use_lbfgs:
+        optimizer = optim.LBFGS(parameters, lr=learning_rate)
+    else:
+        optimizer = optim.SGD(parameters, lr=learning_rate)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', patience=3, verbose=True,
             factor=0.5)
 
+    # main learning loop
     loss_history = []
-
     for epoch in range(num_epochs):
-
         model.train()
-        for x_batch, y_batch in tqdm(train_loader):
+        if verbose:
+            train_loader = tqdm(train_loader)
+        for x_batch, y_batch in train_loader:
+            # prepare mini-batch
             x_batch, y_batch = x_batch.to(device), y_batch.to(device)
             x_batch = x_batch.double()
-            optimizer.zero_grad()
-            y_pred = model(x_batch)
-            smoothed_y_batch = smooth_label(y_batch, alpha, y_pred=y_pred,
-                    kind=kind, num_classes=num_classes, temperature=temperature)
-            loss = loss_func(y_pred, smoothed_y_batch)
-            loss.backward()
-            optimizer.step()
 
-            # loss_history.append(loss)
+            def closure():
+                optimizer.zero_grad()
+                y_pred = model(x_batch)
+                smoothed_y_batch = smooth_label(y_batch, alpha, y_pred=y_pred,
+                        kind=kind, num_classes=num_classes, temperature=temperature)
+                loss = loss_func(y_pred, smoothed_y_batch)
+                loss.backward()
+                return loss
 
-            # eval
-        # if val_loader is not None:
-        model.eval()
-        for x_val, y_val in val_loader:
-            x_val, y_val = x_val.to(device), y_val.to(device)
-            x_val = x_val.double()
-        y_val_pred = model(x_val)
-        smoothed_y_val = smooth_label(y_val, alpha, y_pred=y_val_pred, kind=kind,
-                                num_classes=num_classes, temperature=temperature)
-        val_loss = loss_func(y_val_pred, smoothed_y_val)
-        loss_history.append(val_loss.item())
-        # print("Epoch {} / {}: val loss = {}".format(epoch + 1, num_epochs,
-        #                                            val_loss))
+            # gradient step
+            if use_lbfgs:
+                loss = optimizer.step(closure)
+            else:
+                loss = closure()
+                optimizer.step()
+
+        # validation stuff
+        if val_loader is not None:
+            model.eval()
+            for x_val, y_val in val_loader:
+                x_val, y_val = x_val.to(device), y_val.to(device)
+                x_val = x_val.double()
+            y_val_pred = model(x_val)
+            smoothed_y_val = smooth_label(y_val, alpha, y_pred=y_val_pred, kind=kind,
+                                    num_classes=num_classes, temperature=temperature)
+            val_loss = loss_func(y_val_pred, smoothed_y_val)
+            loss_history.append(val_loss.item())
         scheduler.step(val_loss)
 
-    correct = 0
-    model.eval()
-    with torch.no_grad():
-        for data, target in val_loader:
-            data, target = data.to(device), target.to(device)
-            data = data.double()
-            output = model(data)
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-    acc = correct / len(val_loader.dataset)
+        # check convergence
+        if enable_early_stopping and val_loader is not None:
+            if _has_converged(loss_history):
+                print("Converged after %i / %i" % (epoch + 1, num_epochs))
+                break
 
-    return model, loss_history, acc
+    # compute accuracy
+    if compute_scores:
+        correct = 0
+        model.eval()
+        with torch.no_grad():
+            for data, target in val_loader:
+                data, target = data.to(device), target.to(device)
+                data = data.double()
+                output = model(data)
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+        acc = correct / len(val_loader.dataset)
+        return model, loss_history, acc
+    else:
+        return model, loss_history
 
 
 def test_model(model, test_loader):
@@ -195,7 +233,7 @@ def test_model(model, test_loader):
 
 
 def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
-               alpha=None, kind=None, temperature=None, num_classes=None,
+               alpha=None, kind="adversarial", temperature=None, num_classes=None,
                lims=(0, 1), num_iter=100):
     """
     Run the fgsm attack on the whole test set.
@@ -208,13 +246,16 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
     """
     model.eval()
     correct = {}
-    num_test = 0
+    num_test = np.zeros(num_classes + 1)
     adv_examples = {}
 
     print("Running attack")
     model.eval()
     for batch_idx, (data, target) in enumerate(test_loader):
-        num_test += len(data)
+        num_test[-1] += len(data)
+        for label, counts in zip(*np.unique(target.cpu().data.numpy(),
+                                        return_counts=True)):
+            num_test[label] += counts
 
         # initial forward pass
         data, target = data.to(device), target.to(device)
@@ -229,8 +270,7 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
             continue
 
         # maybe smooth labels
-        if attack_method in ["FGSM", "BIM"]:
-            assert not None in [alpha, kind]
+        if attack_method in ["FGSM", "BIM"] and alpha is not None:
             target_smooth = smooth_label(
                 target, alpha, y_pred=output, num_classes=num_classes,
                 kind=kind, temperature=temperature)
@@ -279,11 +319,20 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         target = target[ok_mask]
 
         # Check for success
+        target = target.cpu().data.numpy()
+        output = output.cpu().data.numpy()
         for epsilon, _, o in zip(epsilons, perturbed_data, output):
+            if epsilon not in correct:
+                correct[epsilon] = np.zeros(num_classes + 1)
+
             # Prediction (perturbated data)
             correct[epsilon] = correct.get(epsilon, 0)
             final_pred = o.argmax(1)
-            correct[epsilon] += (final_pred == target).sum().item()
+            correct[epsilon][-1] += (final_pred == target).sum().item()
+            for label in np.unique(target):
+                mask = (target == label).astype(bool)
+                correct[epsilon][label] += (final_pred[mask] == target[mask]).sum().item()
+                assert correct[epsilon][label] <= num_test[label]
 
             # XXX uncomment
             # if epsilon not in adv_examples:
@@ -304,10 +353,15 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
 
     final_acc = {}
     for epsilon in epsilons:
-        final_acc[epsilon] = correct[epsilon] / float(num_test)
-        print("Epsilon: %.3f\tTest Accuracy = %i / %i = %f" % (
-            epsilon, correct[epsilon], num_test,
-            final_acc[epsilon]))
+        final_acc[epsilon] = correct[epsilon] / num_test.astype(float)
+        print("Epsilon: %.3f" % epsilon)
+        for t in range(num_classes):
+            print("\tClass=%i, Test Accuracy = %i / %i = %f" % (
+                t, correct[epsilon][t], num_test[t],
+                final_acc[epsilon][t]))
+        print("\tClass=any, Test Accuracy = %i / %i = %f" % (
+            correct[epsilon][-1], num_test[-1],
+            final_acc[epsilon][-1]))
 
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
