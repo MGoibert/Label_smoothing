@@ -192,7 +192,8 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         # check convergence
         if enable_early_stopping and val_loader is not None:
             if _has_converged(loss_history):
-                print("Converged after %i / %i" % (epoch + 1, num_epochs))
+                print("Converged after %i / %i epochs" % (
+                    epoch + 1, num_epochs))
                 break
 
     # compute accuracy
