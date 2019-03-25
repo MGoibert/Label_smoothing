@@ -32,7 +32,7 @@ import torch.nn.functional as F
 from joblib import delayed, Parallel
 
 
-from label_smoothing.Train_test_label_smoothing import (
+from label_smoothing.functional import (
     smooth_CE, smooth_label, one_hot, train_model_smooth, test_model,
     run_attack, device)
 from label_smoothing.utils import parse_cmdline_args
