@@ -16,6 +16,7 @@ from operator import itemgetter
 import time
 import random
 import logging
+import os
 
 from sklearn.utils import check_random_state
 
@@ -186,10 +187,10 @@ num_jobs = args.num_jobs        # for parallelisation
 loss_func = smooth_CE
 num_classes = 10
 num_epsilons = args.num_epsilons
-alphas = np.linspace(0, 1, num=args.num_alphas)
+alphas = np.linspace(0.1, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
-epsilons = np.linspace(args.min_epsilon, args.max_epsilon,
-                       num=args.num_epsilons)
+epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
+                       num=args.num_epsilons), [5, 10, 100, 1000, 10000])
 experiment_name = args.experiment_name
 if experiment_name == "temperature":
     temperatures = np.logspace(-4, 3, num=8)
