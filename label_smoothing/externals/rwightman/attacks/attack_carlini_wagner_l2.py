@@ -3,23 +3,22 @@
 Based on paper by Carlini & Wagner, https://arxiv.org/abs/1608.04644 and a reference implementation at
 https://github.com/tensorflow/cleverhans/blob/master/cleverhans/attacks_tf.py
 """
-import os
 import sys
 import torch
 import numpy as np
 from torch import optim
 from torch import autograd
-from helpers import *
+from .helpers import *
 
 
 class AttackCarliniWagnerL2:
-
-    def __init__(self, targeted=True, search_steps=None, max_steps=None, cuda=None, debug=False,
-                 clamp_fn="tanh", clamp_min=-1., clamp_max=1., confidence=20, num_classes=1000):
+    def __init__(self, model, targeted=True, search_steps=None, max_steps=None,
+                 cuda=None, debug=False, clamp_fn="tanh", clamp_min=-1.,
+                 clamp_max=1., num_classes=1000):
+        self.model = model
         self.debug = debug
         self.targeted = targeted
         self.num_classes =  num_classes
-        self.confidence = confidence  # FIXME need to find a good value for this, 0 value used in paper not doing much...
         self.initial_const = 0.1  # bumped up from default of .01 in reference code
         self.binary_search_steps = search_steps or 5
         self.repeat = self.binary_search_steps >= 10
@@ -31,29 +30,29 @@ class AttackCarliniWagnerL2:
         self.clamp_fn = clamp_fn  # set to something else perform a simple clamp instead of tanh
         self.init_rand = False  # an experiment, does a random starting point help?
 
-    def _compare(self, output, target):
+    def _compare(self, output, target, confidence):
         if not isinstance(output, (float, int, np.int64)):
             output = np.copy(output)
             if self.targeted:
-                output[target] -= self.confidence
+                output[target] -= confidence
             else:
-                output[target] += self.confidence
+                output[target] += confidence
             output = np.argmax(output)
         if self.targeted:
             return output == target
         else:
             return output != target
 
-    def _loss(self, output, target, dist, scale_const):
+    def _loss(self, output, target, dist, scale_const, confidence):
         # compute the probability of the label class versus the maximum other
         real = (target * output).sum(1)
         other = ((1. - target) * output - target * 10000.).max(1)[0]
         if self.targeted:
             # if targeted, optimize for making the other class most likely
-            loss1 = torch.clamp(other - real + self.confidence, min=0.)  # equiv to max(..., 0.)
+            loss1 = torch.clamp(other - real + confidence, min=0.)  # equiv to max(..., 0.)
         else:
             # if non-targeted, optimize for making this class least likely.
-            loss1 = torch.clamp(real - other + self.confidence, min=0.)  # equiv to max(..., 0.)
+            loss1 = torch.clamp(real - other + confidence, min=0.)  # equiv to max(..., 0.)
         loss1 = torch.sum(scale_const * loss1)
 
         loss2 = dist.sum()
@@ -61,14 +60,15 @@ class AttackCarliniWagnerL2:
         loss = loss1 + loss2
         return loss
 
-    def _optimize(self, optimizer, model, input_var, modifier_var, target_var, scale_const_var, input_orig=None):
+    def _optimize(self, optimizer, input_var, modifier_var, target_var,
+                  scale_const_var, confidence, input_orig=None):
         # apply modifier and clamp resulting image to keep bounded from clip_min to clip_max
         if self.clamp_fn == 'tanh':
             input_adv = tanh_rescale(modifier_var + input_var, self.clip_min, self.clip_max)
         else:
             input_adv = torch.clamp(modifier_var + input_var, self.clip_min, self.clip_max)
 
-        output = model(input_adv)
+        output = self.model(input_adv)
 
         # distance to the original input data
         if input_orig is None:
@@ -76,7 +76,7 @@ class AttackCarliniWagnerL2:
         else:
             dist = l2_dist(input_adv, input_orig, keepdim=False)
 
-        loss = self._loss(output, target_var, dist, scale_const_var)
+        loss = self._loss(output, target_var, dist, scale_const_var, confidence)
 
         optimizer.zero_grad()
         loss.backward()
@@ -88,7 +88,7 @@ class AttackCarliniWagnerL2:
         input_adv_np = input_adv.data.permute(0, 2, 3, 1).cpu().numpy()  # back to BHWC for numpy consumption
         return loss_np, dist_np, output_np, input_adv_np
 
-    def run(self, model, features, target, batch_idx=0):
+    def run(self, features, target, confidence=20., batch_idx=0):
         batch_size = features.size(0)
 
         # set the lower and upper bounds accordingly
@@ -152,12 +152,12 @@ class AttackCarliniWagnerL2:
                 # perform the attack
                 loss, dist, output, adv_img = self._optimize(
                     optimizer,
-                    model,
                     features_var,
                     modifier_var,
                     target_var,
                     scale_const_var,
-                    features_orig)
+                    confidence,
+                    input_orig=features_orig)
 
                 if step % 100 == 0 or step == self.max_steps - 1:
                     print('Step: {0:>4}, loss: {1:6.4f}, dist: {2:8.5f}, modifier mean: {3:.5e}'.format(
@@ -179,13 +179,14 @@ class AttackCarliniWagnerL2:
                         if step % 100 == 0:
                             print('{0:>2} dist: {1:.5f}, output: {2:>3}, {3:5.3}, target {4:>3}'.format(
                                 i, di, output_label, output_logits[output_label], target_label))
-                    if di < best_l2[i] and self._compare(output_logits, target_label):
+                    if di < best_l2[i] and self._compare(output_logits, target_label, confidence):
                         if self.debug:
                             print('{0:>2} best step,  prev dist: {1:.5f}, new dist: {2:.5f}'.format(
                                   i, best_l2[i], di))
                         best_l2[i] = di
                         best_score[i] = output_label
-                    if di < o_best_l2[i] and self._compare(output_logits, target_label):
+                    if di < o_best_l2[i] and self._compare(
+                            output_logits, target_label, confidence):
                         if self.debug:
                             print('{0:>2} best total, prev dist: {1:.5f}, new dist: {2:.5f}'.format(
                                   i, o_best_l2[i], di))
@@ -200,7 +201,8 @@ class AttackCarliniWagnerL2:
             batch_failure = 0
             batch_success = 0
             for i in range(batch_size):
-                if self._compare(best_score[i], target[i]) and best_score[i] != -1:
+                if self._compare(best_score[i], target[i],
+                                 confidence) and best_score[i] != -1:
                     # successful, do binary search and divide const by two
                     upper_bound[i] = min(upper_bound[i], scale_const[i])
                     if upper_bound[i] < 1e9:
@@ -219,12 +221,14 @@ class AttackCarliniWagnerL2:
                     if self.debug:
                         print('{0:>2} failed attack, raising const to {1:.3f}'.format(
                             i, scale_const[i]))
-                if self._compare(o_best_score[i], target[i]) and o_best_score[i] != -1:
+                if self._compare(o_best_score[i], target[i],
+                                 confidence) and o_best_score[i] != -1:
                     batch_success += 1
                 else:
                     batch_failure += 1
 
-            print('Num failures: {0:2d}, num successes: {1:2d}\n'.format(batch_failure, batch_success))
+            print('Num failures: {0:2d}, num successes: {1:2d}\n'.format(
+                batch_failure, batch_success))
             sys.stdout.flush()
             # end outer search loop
 

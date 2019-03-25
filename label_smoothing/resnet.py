@@ -1,46 +1,22 @@
-import torch
+"""
+Synopsis: Yet another ResNet implementation
+Author: m.goibert,
+        Elvis Dohmatob <gmdopp@gmail.com
+"""
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-# LeNet model for MNIST
-
-class LeNet(nn.Module):
-    """
-    LeNet Model definition
-    """
-
-    def __init__(self):
-        super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
-
-    def encode(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, training=self.training)
-        return self.fc2(x)
-
-    def forward(self, x):
-        return F.softmax(self.encode(x), dim=1)
-
-
-# -------------------------
-
-# ResNet model for CIFAR10 (32x32 image resolution)
-
 class BasicBlock(nn.Module):
+    """
+    ResNet model for CIFAR10 (32x32 image resolution)
+    """
     expansion = 1
 
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride,
+                               padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
                                stride=1, padding=1, bias=False)
@@ -51,8 +27,7 @@ class BasicBlock(nn.Module):
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion * planes,
                           kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion * planes)
-            )
+                nn.BatchNorm2d(self.expansion * planes))
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
@@ -94,11 +69,13 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
+    """
+    ResNet: DeepNet with residua connections
+    """
 
     def __init__(self, block, num_blocks, num_classes=10):
         super(ResNet, self).__init__()
         self.in_planes = 64
-
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
@@ -127,22 +104,17 @@ class ResNet(nn.Module):
         out = self.linear(out)
         return out
 
-
 def ResNet18():
     return ResNet(BasicBlock, [2, 2, 2, 2])
-
 
 def ResNet34():
     return ResNet(BasicBlock, [3, 4, 6, 3])
 
-
 def ResNet50():
     return ResNet(Bottleneck, [3, 4, 6, 3])
 
-
 def ResNet101():
     return ResNet(Bottleneck, [3, 4, 23, 3])
-
 
 def ResNet152():
     return ResNet(Bottleneck, [3, 8, 36, 3])

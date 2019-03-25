@@ -63,5 +63,8 @@ def parse_cmdline_args():
     parser.add_argument(
         '--num_samples', type=int, default=10000,
         help="number of samples for triangular experiment")
+    parser.add_argument(
+        '--num_iter_attack', type=int, default=10000,
+        help="number of (outer-most) iterations for iterative attacks")
 
     return parser.parse_args()
