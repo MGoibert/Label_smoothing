@@ -15,7 +15,11 @@ Libraries
 from operator import itemgetter
 import time
 import random
-import logging
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.utils import check_random_state
 
@@ -25,21 +29,16 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 from joblib import delayed, Parallel
 
 
-from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
-                                        train_model_smooth, test_model,
-                                        run_attack, device)
-from utils import parse_cmdline_args
-from mlp import MNISTMLP
-from lenet import LeNet, LeNetCIFAR10
-from resnet import ResNet18
+from label_smoothing.Train_test_label_smoothing import (
+    smooth_CE, smooth_label, one_hot, train_model_smooth, test_model,
+    run_attack, device)
+from label_smoothing.utils import parse_cmdline_args
+from label_smoothing.mlp import MNISTMLP
+from label_smoothing.lenet import LeNet, LeNetCIFAR10
+from label_smoothing.resnet import ResNet18
 
 
 # Change precision tensor and set seed

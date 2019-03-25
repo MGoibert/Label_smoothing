@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
-from externals.rwightman.attacks import AttackCarliniWagnerL2
+from .externals.rwightman.attacks import AttackCarliniWagnerL2
 
 
 def where(cond, x, y):
