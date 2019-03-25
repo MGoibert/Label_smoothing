@@ -187,7 +187,7 @@ num_jobs = args.num_jobs        # for parallelisation
 loss_func = smooth_CE
 num_classes = 10
 num_epsilons = args.num_epsilons
-alphas = np.linspace(0.1, 1, num=args.num_alphas)
+alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
                        num=args.num_epsilons), [5, 10, 100, 1000, 10000])
