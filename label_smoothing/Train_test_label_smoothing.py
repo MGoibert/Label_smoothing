@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from attacks import FGSM, BIM, DeepFool, CW, TriangularAttack
+from .attacks import FGSM, BIM, DeepFool, CW, TriangularAttack
 
 cuda = torch.cuda.is_available()
 logging.info("CUDA Available: {}".format(cuda))

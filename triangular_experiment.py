@@ -19,10 +19,10 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader
 from operator import itemgetter
 
-from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
-                                        train_model_smooth, test_model,
-                                        run_attack)
-from utils import parse_cmdline_args
+from label_smoothing.Train_test_label_smoothing import (
+    smooth_CE, smooth_label, one_hot, train_model_smooth, test_model,
+    run_attack)
+from label_smoothing.utils import parse_cmdline_args
 
 # Change precision tensor
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -67,7 +67,7 @@ args = parse_cmdline_args()
 
 
 def run_experiment(net0, alpha, kind, epsilons, temperature=None,
-                   define_net=False):
+                   define_net=False, use_lbfgs=True):
     """
     Specific function to run the triangular experiement.
     alpha is the strenght of label smoothing
@@ -77,6 +77,7 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     define_net = True or False. If True, uses the net given by net0
     without training.
     """
+    num_classes = 2
     print("alpha = ", alpha)
     net_lin = lin()
     param = [torch.tensor([[0.], [1.]]), torch.tensor([0., 0.5])]
@@ -88,8 +89,8 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     if define_net == False:
         net, loss_history, acc_tr = train_model_smooth(
             net_lin, train_loader, val_loader, loss_func, num_epochs,
-            alpha=alpha, kind=kind, num_classes=None,
-            temperature=temperature)
+            alpha=alpha, kind=kind, num_classes=num_classes,
+            temperature=temperature, use_lbfgs=use_lbfgs)
     else:
         net = net0
         loss_history = 0
@@ -100,7 +101,7 @@ def run_experiment(net0, alpha, kind, epsilons, temperature=None,
     accs_adv, exs_adv = run_attack(net, test_loader, loss_func, epsilons,
                                    attack_method="triangular", alpha=alpha,
                                    kind=kind, temperature=temperature,
-                                   num_classes=None)
+                                   num_classes=num_classes)
 
     accuracy_adv = []
     for epsilon in epsilons:
