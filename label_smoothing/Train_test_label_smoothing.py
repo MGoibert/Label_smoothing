@@ -250,7 +250,7 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
     num_test = np.zeros(num_classes + 1)
     adv_examples = {}
 
-    print("Running attack")
+    print("Running %s attack" % attack_method)
     model.eval()
     for batch_idx, (data, target) in enumerate(test_loader):
         num_test[-1] += len(data)

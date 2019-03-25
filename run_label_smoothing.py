@@ -11,7 +11,7 @@ Created on Wed Feb 13 14:05:17 2019
 """
 Libraries
 """
-
+import os
 from operator import itemgetter
 import time
 import random
@@ -39,7 +39,6 @@ from label_smoothing.utils import parse_cmdline_args
 from label_smoothing.mlp import MNISTMLP
 from label_smoothing.lenet import LeNet, LeNetCIFAR10
 from label_smoothing.resnet import ResNet18
-
 
 # Change precision tensor and set seed
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -145,9 +144,9 @@ if experiment_name == "temperature":
 else:
     temperatures = [0.1]
 model = args.model
-attack_method = args.attack_method
+attack_methods = args.attack_method
 
-if attack_method == "DeepFool":
+if attack_methods == "DeepFool":
     epsilons = [1]
 
 # define what device we are using
@@ -161,7 +160,7 @@ Running
 """
 
 
-def run_experiment(alpha, kind, epsilons, temperature=None):
+def run_experiment(alpha, kind, epsilons, temperature=None, attack_method="FGSM"):
     if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
         # load the pretrained net
@@ -208,8 +207,8 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         # print("epsilon = %s" % epsilon)
         accuracy_adv.append(acc_adv)
     print("Execution time = %.2f sec" % delta_time)
-    return (net, alpha, kind, temperature, loss_history, acc_tr, acc_test,
-            accuracy_adv, delta_time)
+    return (net, alpha, kind, temperature, attack_method, loss_history, acc_tr,
+            acc_test, accuracy_adv, delta_time)
 
 # run experiments in parallel with joblib
 # XXX You need to instal joblib version 0.11 like so
@@ -219,27 +218,31 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 # XXX Double for argument #4 'mat1'
 
 df = []
-jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
-        for temperature in temperatures]
+jobs = [(alpha, "boltzmann", temperature, attack_method) for alpha in alphas
+        for temperature in temperatures for attack_method in attack_methods]
 if experiment_name != "temperature":
-    jobs += [(alpha, kind, None) for kind in ["standard", "adversarial",
-                                              "second_best"]
-             for alpha in alphas]
+    jobs += [(alpha, kind, None, attack_method)
+             for kind in ["standard", "adversarial", "second_best"]
+             for alpha in alphas for attack_method in attack_methods]
 if num_jobs > 1:
     print("Using joblib...")
     results = Parallel(n_jobs=num_jobs)(
-        delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
-        for alpha, kind, temperature in jobs)
+        delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature,
+                                attack_method=attack_method)
+        for alpha, kind, temperature, attack_method in jobs)
 else:
-    results = [run_experiment(alpha, kind, epsilons, temperature=temperature)
-               for alpha, kind, temperature in jobs]
-for _, alpha, kind, temperature, _, _, acc_test, accs, _ in results:
-    for epsilon, acc in zip(epsilons, accs):
-        df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
-                       kind=kind, temperature=temperature))
+    results = [run_experiment(alpha, kind, epsilons, temperature=temperature,
+                              attack_method=attack_method)
+               for alpha, kind, temperature, attack_method in jobs]
+for _, alpha, kind, temperature, attack_method, _, _, acc_test, accs, _ in results:
+    for epsilon, accs_ in zip(epsilons, accs):
+        for label, acc in enumerate(accs_):
+            df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
+                           kind=kind, temperature=temperature, label=label,
+                           attack_method=attack_method))
 df = pd.DataFrame(df)
-results_file = "res_dataframes/%s_%s_results_%s_exp_%s_attack.csv" % (
-    dataset, model, experiment_name, attack_method)
+results_file = "res_dataframes/%s_%s_results_%s_exp_%s.csv" % (
+    dataset, model, experiment_name, "+".join(attack_methods))
 
 if not os.path.exists("res_dataframes/"):
     os.makedirs("res_dataframes/")
