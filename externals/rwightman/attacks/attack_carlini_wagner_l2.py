@@ -3,13 +3,12 @@
 Based on paper by Carlini & Wagner, https://arxiv.org/abs/1608.04644 and a reference implementation at
 https://github.com/tensorflow/cleverhans/blob/master/cleverhans/attacks_tf.py
 """
-import os
 import sys
 import torch
 import numpy as np
 from torch import optim
 from torch import autograd
-from helpers import *
+from .helpers import *
 
 
 class AttackCarliniWagnerL2:
