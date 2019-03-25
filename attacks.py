@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
-sys.path.append("externals/rwightman/attacks")
+sys.path.append("/home/elvis/CODE/FORKED/label_smoothing/externals/rwightman/attacks")
 from attack_carlini_wagner_l2 import AttackCarliniWagnerL2
 
 
@@ -39,6 +39,8 @@ class _BaseAttack(object):
         return self.run(*args, **kwargs)
 
     def clamp(self, data):
+        if self.lims is None:
+            return data
         if hasattr(self.lims, "__call__"):
             return self.lims(data)
         else:

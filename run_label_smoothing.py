@@ -37,62 +37,15 @@ from Train_test_label_smoothing import (smooth_CE, smooth_label, one_hot,
                                         train_model_smooth, test_model,
                                         run_attack, device)
 from utils import parse_cmdline_args
-from lenet import LeNet, ResNet18
+from mlp import MNISTMLP
+from lenet import LeNet, LeNetCIFAR10
+from resnet import ResNet18
 
 
 # Change precision tensor and set seed
 torch.set_default_tensor_type(torch.DoubleTensor)
 random.seed(1)
 np.random.seed(1)
-
-
-"""
-Models
-"""
-
-# Linear model for MNIST
-
-
-class MLPNet(nn.Module):
-
-    def __init__(self):
-        super(MLPNet, self).__init__()
-        self.fc1 = nn.Linear(28 * 28, 500)
-        self.fc2 = nn.Linear(500, 256)
-        self.fc3 = nn.Linear(256, 10)
-        self.soft = nn.Softmax(dim=1)
-
-    def forward(self, x):
-        x = x.view(-1, 28 * 28)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        x = self.soft(x)
-        return x
-
-
-# LeNet model for CIFAR10
-
-class LeNetCifar(nn.Module):
-
-    def __init__(self):
-        super(LeNetCifar, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        x = F.softmax(x, dim=1)
-        return x
 
 
 """
@@ -216,11 +169,12 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
         pretrained_net = "lenet_mnist_model.pth"
         net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
     elif dataset + "_" + model == "MNIST_Linear":
-        net0 = MLPNet()
+        net0 = MNISTMLP()
     elif dataset + "_" + model == "CIFAR10_LeNet":
-        net0 = LeNetCifar()
+        net0 = LeNetCIFAR10()
     elif dataset + "_" + model == "CIFAR10_ResNet":
         net0 = ResNet18()
+
     net0 = net0.to(device)
 
     print(net0)
