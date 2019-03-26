@@ -181,22 +181,19 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     print("ls Kind = {} \n".format(kind))
     print("alpha = %.2f" % alpha)
 
-    if False:
-        net, loss_history, acc_tr = net0, None, np.nan
-        acc_test = np.nan
-    else:
-        net, loss_history, acc_tr = train_model_smooth(
-            net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
-            kind=kind, num_classes=num_classes, temperature=temperature)
-        acc_test = test_model(net, test_loader)
+    net, loss_history, acc_tr = train_model_smooth(
+        net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
+        kind=kind, num_classes=num_classes, temperature=temperature)
+    acc_test = test_model(net, test_loader)
 
-        print("Accuracy (training) = %g " % acc_tr)
-        print("Accuracy (Test) = {} ".format(acc_test))
+    print("Accuracy (training) = %g " % acc_tr)
+    print("Accuracy (Test) = {} ".format(acc_test))
 
     # run attack (possibly massively in parallel over test data and epsilons)
-    accuracy_adv = []
+    accuracy_adv = {}
     t0 = time.time()
     for attack_method in attack_methods:
+        accuracy_adv[attack_method] = []
         accs_adv, _ = run_attack(net, test_loader, loss_func, epsilons,
                              attack_method=attack_method, alpha=alpha,
                              num_classes=num_classes, kind=kind,
@@ -208,7 +205,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
             acc_adv = accs_adv[epsilon]
             # ex_adv = exs_adv[epsilon]
             # print("epsilon = %s" % epsilon)
-            accuracy_adv.append(acc_adv)
+            accuracy_adv[attack_method].append(acc_adv)
         print("Execution time = %.2f sec" % delta_time)
     return (net, alpha, kind, temperature, loss_history, acc_tr,
             acc_test, accuracy_adv, delta_time)
@@ -235,13 +232,13 @@ if num_jobs > 1:
 else:
     results = [run_experiment(alpha, kind, epsilons, temperature=temperature)
                for alpha, kind, temperature in jobs]
-for _, alpha, kind, temperature, _, _, acc_test, accs, _ in results:
-    for attack_method in attack_methods:
+for _, alpha, kind, temperature, _, _, acc_test, accuracy_adv, _ in results:
+    for attack_method, accs in accuracy_adv.items():
         for epsilon, accs_ in zip(epsilons, accs):
             for label, acc in enumerate(accs_):
-                df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test, acc=acc,
-                           kind=kind, temperature=temperature, label=label,
-                           attack_method=attack_method))
+                df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test,
+                               acc=acc, kind=kind, temperature=temperature,
+                               label=label, attack_method=attack_method))
 df = pd.DataFrame(df)
 results_file = "res_dataframes/%s_%s_results_%s_exp_%s.csv" % (
     dataset, model, experiment_name, "+".join(attack_methods))
