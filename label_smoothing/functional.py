@@ -235,7 +235,7 @@ def test_model(model, test_loader):
 
 def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                alpha=None, kind="adversarial", temperature=None, num_classes=None,
-               lims=(0, 1), num_iter=100):
+               lims=(0, 1), num_iter=None):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
@@ -249,6 +249,12 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
     correct = {}
     num_test = np.zeros(num_classes + 1)
     adv_examples = {}
+
+    if num_iter is None:
+        if attack_method == "BIM":
+            num_iter = 4
+        else:
+            num_iter = 100
 
     print("Running %s attack" % attack_method)
     model.eval()
