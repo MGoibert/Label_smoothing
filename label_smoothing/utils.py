@@ -6,9 +6,19 @@ import sys
 import logging
 import argparse
 
+import pandas as pd
+
 # config
 # torch.set_default_tensor_type(torch.DoubleTensor)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
+def best_of(df, columns, metric="acc"):
+    filtered = []
+    for params, group in df.groupby(columns):
+        params = dict(zip(columns, params))
+        params[metric] = group[metric].max()
+        filtered.append(params)
+    return pd.DataFrame(filtered)
 
 
 def parse_cmdline_args():
