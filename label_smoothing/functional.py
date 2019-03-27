@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from .attacks import FGSM, BIM, DeepFool, CW, TriangularAttack
+from .attacks import FGSM, BIM, DeepFool, CW, CWBis, TriangularAttack
 
 cuda = torch.cuda.is_available()
 logging.info("CUDA Available: {}".format(cuda))
@@ -28,7 +28,7 @@ device = torch.device("cuda" if cuda else "cpu")
 print("device train = ", device)
 
 
-def smooth_CE(outputs, labels):
+def smooth_cross_entropy(outputs, labels):
     """
     Loss function for smoothed labeled.
     Generalization of the cross-entropy loss. Needs a softmax as the last layer
@@ -42,8 +42,8 @@ def smooth_CE(outputs, labels):
     if labels[0].dim() == 0:
         for i in range(size):
             labels[i] = labels[i].unsqueeze(-1)
-    res = 1. / size * \
-        sum([torch.dot(torch.log(outputs[i]), labels[i]) for i in range(size)])
+    res = 1. / size * sum([torch.dot(torch.log(outputs[i]), labels[i])
+                           for i in range(size)])
     return -res
 
 
@@ -62,46 +62,54 @@ def one_hot(y, num_classes=None):
     return y_
 
 
-def smooth_label(y, alpha, num_classes=None, y_pred=None, kind="standard",
-                 temperature=.1):
+def smooth_label(y, alpha, num_classes=None, y_pred=None,
+                 smoothing_method="standard", temperature=.1):
     """
-    Implements label-smoothing. Methods:
-        - Standard: uniform weights for all non-true classes
-        - Adversarial: weight only on the true class and the smallest logit
-            classe(s)
-        - Boltzmann: warm adversarial using boltzmann distribution (with
-            parameter temperature)
-        - Second_best: weight only on the true class and the highest
-            non-true logit class
-    For each method, the true class receive weight at least 1-alpha
-    """
+    Implements label-smoothing.
 
-    y_ = (1 - alpha) * one_hot(y, num_classes=num_classes)
-    if alpha > 0.:
-        if kind == "standard":
-            salt = torch.ones_like(y_, device=y_.device)
-            salt = (1 - one_hot(y, num_classes=num_classes)) * \
-                salt / (salt.sum(-1) - 1).unsqueeze(-1)
-        elif kind == "adversarial":
-            bad_values, _ = y_pred.min(dim=-1)
-            salt = (y_pred == bad_values.unsqueeze(-1)).double()
-            salt = salt / salt.sum(-1).unsqueeze(-1)
-        elif kind == "boltzmann":
-            a = torch.gather(y_pred, 1, y.unsqueeze(-1))
-            b = (y_pred != a).double() * y_pred
-            b[b == 0] = float('inf')
-            salt = F.softmax(-b / temperature, dim=-1)
-        elif kind == "second_best":
-            bad_values = y_pred.max(dim=-1)[0] * \
-                ( (y_pred.max(dim=-1)[1] != y).double() ) + \
-                (y_pred * ( (y_pred != y_pred.max(-1)[0].unsqueeze(-1)).double() )). \
-                max(dim=-1)[0] * ((y_pred.max(dim=-1)[1] == y).double())
-            salt = (y_pred == bad_values.unsqueeze(-1)).double()
-            salt = salt / salt.sum(-1).unsqueeze(-1)
-        else:
-            raise NotImplementedError(kind)
-        salt = salt * alpha
-        y_ = y_ + salt
+    Parameters
+    ----------
+    smoothing_method: string, Technology to use
+        - standard: uniform weights for all non-true classes
+        - sdversarial: weight only on the true class and the smallest logit
+            classe(s)
+        - boltzmann: warm adversarial using boltzmann distribution (with
+            parameter temperature)
+        - second_best: weight only on the true class and the highest
+            non-true logit class
+
+    For each method, the true class receive weight at least 1 - alpha
+    """
+    oh = one_hot(y, num_classes=num_classes)
+    if alpha == 0:
+        return oh
+    num_classes = oh.size(1) if num_classes is None else num_classes
+    y_ = (1 - alpha) * oh
+
+    if smoothing_method == "standard":
+        salt = torch.ones_like(y_, device=y_.device)
+        salt = (1. - oh) / (num_classes - 1)
+    elif smoothing_method == "adversarial":
+        bad_values, _ = y_pred.min(dim=-1)
+        salt = (y_pred == bad_values.unsqueeze(-1)).double()
+        print(salt.argmax(-1))
+        salt = salt / salt.sum(-1).unsqueeze(-1)
+    elif smoothing_method == "boltzmann":
+        a = torch.gather(y_pred, 1, y.unsqueeze(-1))
+        b = (y_pred != a).double() * y_pred
+        b[b == 0] = float('inf')
+        salt = F.softmax(-b / temperature, dim=-1)
+    elif smoothing_method == "second_best":
+        bad_values = y_pred.max(dim=-1)[0] * \
+            ( (y_pred.max(dim=-1)[1] != y).double() ) + \
+            (y_pred * ( (y_pred != y_pred.max(-1)[0].unsqueeze(-1)).double() )). \
+            max(dim=-1)[0] * ((y_pred.max(dim=-1)[1] == y).double())
+        salt = (y_pred == bad_values.unsqueeze(-1)).double()
+        salt = salt / salt.sum(-1).unsqueeze(-1)
+    else:
+        raise NotImplementedError(smoothing_method)
+    salt = salt * alpha
+    y_ = y_ + salt
     return y_
 
 
@@ -123,15 +131,16 @@ def _has_converged(history, convergence_threshold=1e-4, window_size=5):
 
 
 def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
-                       learning_rate=0.1, verbose=1, alpha=0, kind="standard",
-                       num_classes=None, temperature=0.1, use_lbfgs=False,
-                       enable_early_stopping=False, compute_scores=True):
+                       learning_rate=0.1, verbose=1, alpha=0,
+                       smoothing_method="standard", num_classes=None,
+                       temperature=0.1, use_lbfgs=False,  compute_scores=True,
+                       enable_early_stopping=False):
     """
     Training of a model using label smoothing.
     alpha is the parameter calibrating the strenght of the label smoothing
-    kind = "standrard", "adversarial", "boltzmann" or "second_best" 
+    smoothing_method = "standrard", "adversarial", "boltzmann" or "second_best" 
         is the type of label smoothing
-    temperature is useful for kind = "boltzmann"
+    temperature is useful for smoothing_method = "boltzmann"
 
     Output :
         - the trained model
@@ -163,8 +172,11 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
             def closure():
                 optimizer.zero_grad()
                 y_pred = model(x_batch)
-                smoothed_y_batch = smooth_label(y_batch, alpha, y_pred=y_pred,
-                        kind=kind, num_classes=num_classes, temperature=temperature)
+                smoothed_y_batch = smooth_label(
+                    y_batch, alpha, y_pred=y_pred,
+                    smoothing_method=smoothing_method,
+                    num_classes=num_classes,
+                    temperature=temperature)
                 loss = loss_func(y_pred, smoothed_y_batch)
                 loss.backward()
                 return loss
@@ -183,8 +195,10 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                 x_val, y_val = x_val.to(device), y_val.to(device)
                 x_val = x_val.double()
             y_val_pred = model(x_val)
-            smoothed_y_val = smooth_label(y_val, alpha, y_pred=y_val_pred, kind=kind,
-                                    num_classes=num_classes, temperature=temperature)
+            smoothed_y_val = smooth_label(y_val, alpha, y_pred=y_val_pred,
+                                          smoothing_method=smoothing_method,
+                                          num_classes=num_classes,
+                                          temperature=temperature)
             val_loss = loss_func(y_val_pred, smoothed_y_val)
             loss_history.append(val_loss.item())
         scheduler.step(val_loss)
@@ -234,8 +248,8 @@ def test_model(model, test_loader):
 
 
 def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
-               alpha=None, kind="adversarial", temperature=None, num_classes=None,
-               lims=(0, 1), num_iter=None):
+               alpha=None, smoothing_method="adversarial", temperature=None,
+               num_classes=None, lims=(0, 1), num_iter=None):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
@@ -256,10 +270,36 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         else:
             num_iter = 100
 
+    # instantiate attacker
+    kwargs = {}
+    if attack_method == "DeepFool":
+        attacker = DeepFool(model, lims=lims, num_classes=num_classes,
+                            num_iter=num_iter)
+    elif attack_method == "triangular":
+        attacker = TriangularAttack(model)
+    elif hasattr(attack_method, "__call__"):
+        attacker = attack_method
+    elif attack_method == "FGSM":
+        attacker = FGSM(model, loss_func, lims=lims)
+    elif attack_method == "BIM":
+        attacker = BIM(model, loss_func, lims=lims, num_iter=num_iter)
+    elif attack_method == "CW":
+        attacker = CW(model, lims=lims, num_iter=num_iter)
+    elif attack_method == "CWBis":
+        attacker = CWBis(model, targeted=False, num_classes=num_classes,
+                         cuda=cuda, lims=lims, num_iter=num_iter)
+    else:
+        raise NotImplementedError(attack_method)
+
     print("Running %s attack" % attack_method)
     model.eval()
     for batch_idx, (data, target) in enumerate(test_loader):
-        num_test[-1] += len(data)
+        batch_size = len(data)
+        print("batch %i (%i examples)" % (batch_idx + 1, batch_size))
+        if attack_method == "CWBis":
+            kwargs["batch_idx"] = batch_idx
+
+        num_test[-1] += batch_size
         for label, counts in zip(*np.unique(target.cpu().data.numpy(),
                                         return_counts=True)):
             num_test[label] += counts
@@ -268,6 +308,8 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         data, target = data.to(device), target.to(device)
         data.requires_grad = True
         output = model(data)
+        if attack_method == "FGSM":
+            kwargs["pred"] = output
 
         # Prediction (original data)
         init_pred = output.argmax(1)
@@ -280,30 +322,9 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         if attack_method in ["FGSM", "BIM"] and alpha is not None:
             target_smooth = smooth_label(
                 target, alpha, y_pred=output, num_classes=num_classes,
-                kind=kind, temperature=temperature)
+                smoothing_method=smoothing_method, temperature=temperature)
         else:
             target_smooth = target
-
-        # instantiate attacker
-        kwargs = {}
-        if attack_method == "DeepFool":
-            attacker = DeepFool(model, lims=lims, num_classes=num_classes,
-                                num_iter=num_iter)
-        elif attack_method == "triangular":
-            attacker = TriangularAttack(model)
-        elif hasattr(attack_method, "__call__"):
-            attacker = attack_method
-        elif attack_method == "FGSM":
-            kwargs["pred"] = output
-            attacker = FGSM(model, loss_func, lims=lims)
-        elif attack_method == "BIM":
-            attacker = BIM(model, loss_func, lims=lims, num_iter=num_iter)
-        elif attack_method == "CW":
-            attacker = CW(model, targeted=False, num_classes=num_classes,
-                          cuda=cuda, lims=lims, num_iter=num_iter)
-            kwargs["batch_idx"] = batch_idx
-        else:
-            raise NotImplementedError(attack_method)
 
         # run attacker
         if attack_method == "DeepFool":
@@ -338,7 +359,8 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
             correct[epsilon][-1] += (final_pred == target).sum().item()
             for label in np.unique(target):
                 mask = (target == label).astype(bool)
-                correct[epsilon][label] += (final_pred[mask] == target[mask]).sum().item()
+                correct[epsilon][label] += (
+                    final_pred[mask] == target[mask]).sum().item()
                 assert correct[epsilon][label] <= num_test[label]
 
             # XXX uncomment
