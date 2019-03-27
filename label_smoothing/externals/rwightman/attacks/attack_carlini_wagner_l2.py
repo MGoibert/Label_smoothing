@@ -20,7 +20,7 @@ class AttackCarliniWagnerL2:
         self.targeted = targeted
         self.num_classes =  num_classes
         self.initial_const = 0.1  # bumped up from default of .01 in reference code
-        self.binary_search_steps = search_steps or 5
+        self.binary_search_steps = search_steps or 10
         self.repeat = self.binary_search_steps >= 10
         self.max_steps = max_steps or 1000
         self.abort_early = True
@@ -130,7 +130,8 @@ class AttackCarliniWagnerL2:
         optimizer = optim.Adam([modifier_var], lr=0.0005)
 
         for search_step in range(self.binary_search_steps):
-            print('Batch: {0:>3}, search step: {1}'.format(batch_idx, search_step))
+            print('Batch: {0:>3} search step: {1} / {2}'.format(
+                batch_idx, search_step + 1, self.binary_search_steps))
             if self.debug:
                 print('Const:')
                 for i, x in enumerate(scale_const):
@@ -160,8 +161,8 @@ class AttackCarliniWagnerL2:
                     input_orig=features_orig)
 
                 if step % 100 == 0 or step == self.max_steps - 1:
-                    print('Step: {0:>4}, loss: {1:6.4f}, dist: {2:8.5f}, modifier mean: {3:.5e}'.format(
-                        step, loss, dist.mean(), modifier_var.data.mean()))
+                    print('Iter: {0:>4}, loss: {1:6.4f}, dist: {2:8.5f}, modifier mean: {3:.5e}'.format(
+                        step + 1, loss, dist.mean(), modifier_var.data.mean()))
 
                 if self.abort_early:  #  and step % (self.max_steps // 10) == 0:
                     if loss > prev_loss * .9999:
