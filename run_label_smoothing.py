@@ -33,7 +33,7 @@ from joblib import delayed, Parallel
 
 
 from label_smoothing.functional import (
-    smooth_CE, smooth_label, one_hot, train_model_smooth, test_model,
+    smooth_cross_entropy, smooth_label, one_hot, train_model_smooth, test_model,
     run_attack, device)
 from label_smoothing.utils import parse_cmdline_args
 from label_smoothing.mlp import MNISTMLP
@@ -130,23 +130,20 @@ test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
 # Parameters
 
 num_jobs = args.num_jobs        # for parallelisation
-loss_func = smooth_CE
+loss_func = smooth_cross_entropy
 num_classes = 10
-num_epsilons = args.num_epsilons
-alphas = np.linspace(0, 1, num=args.num_alphas)
+alphas = np.linspace(args.min_alpha, args.max_alpha, num=args.num_alphas)
 num_epochs = args.num_epochs
 num_iter_attack = args.num_iter_attack
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
-                       num=args.num_epsilons),
+                                 num=args.num_epsilons),
                      [5, 10, 100, 1000, 10000]
 )
 experiment_name = args.experiment_name
-if experiment_name == "temperature":
-    temperatures = np.logspace(-4, 3, num=8)
-else:
-    temperatures = [0.1]
+temperatures = np.logspace(-4, -1, num=4)
 model = args.model
 attack_methods = args.attack_method
+smoothing_methods = args.smoothing_method
 if type(attack_methods)==str:
     attack_methods = [attack_methods]
 
@@ -164,7 +161,7 @@ Running
 """
 
 
-def run_experiment(alpha, kind, epsilons, temperature=None):
+def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
         # load the pretrained net
@@ -180,12 +177,13 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     net0 = net0.to(device)
 
     print(net0)
-    print("ls Kind = {} \n".format(kind))
+    print("label-smoothing method = {} \n".format(smoothing_method))
     print("alpha = %.2f" % alpha)
 
     net, loss_history, acc_tr = train_model_smooth(
         net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
-        kind=kind, num_classes=num_classes, temperature=temperature)
+        smoothing_method=smoothing_method, num_classes=num_classes,
+        temperature=temperature)
     acc_test = test_model(net, test_loader)
 
     print("Accuracy (training) = %g " % acc_tr)
@@ -197,10 +195,11 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
     for attack_method in attack_methods:
         accuracy_adv[attack_method] = []
         accs_adv, _ = run_attack(net, test_loader, loss_func, epsilons,
-                             attack_method=attack_method, alpha=alpha,
-                             num_classes=num_classes, kind=kind,
-                             temperature=temperature, lims=lims,
-                             num_iter=num_iter_attack)
+                                 attack_method=attack_method, alpha=alpha,
+                                 num_classes=num_classes,
+                                 smoothing_method=smoothing_method,
+                                 temperature=temperature, lims=lims,
+                                 num_iter=num_iter_attack)
         delta_time = time.time() - t0
 
         for epsilon in epsilons:
@@ -209,7 +208,7 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
             # print("epsilon = %s" % epsilon)
             accuracy_adv[attack_method].append(acc_adv)
         print("Execution time = %.2f sec" % delta_time)
-    return (net, alpha, kind, temperature, loss_history, acc_tr,
+    return (net, alpha, smoothing_method, temperature, loss_history, acc_tr,
             acc_test, accuracy_adv, delta_time)
 
 # run experiments in parallel with joblib
@@ -220,26 +219,31 @@ def run_experiment(alpha, kind, epsilons, temperature=None):
 # XXX Double for argument #4 'mat1'
 
 df = []
-jobs = [(alpha, "boltzmann", temperature) for alpha in alphas
-        for temperature in temperatures]
-if experiment_name != "temperature":
-    jobs += [(alpha, kind, None)
-             for kind in ["standard", "adversarial", "second_best"]
-             for alpha in alphas]
+jobs = []
+for smoothing_method in smoothing_methods:
+    if smoothing_method == "boltzmann":
+        jobs += [(alpha, "boltzmann", temperature) for alpha in alphas
+                 for temperature in temperatures]
+    else:
+        jobs += [(alpha, smoothing_method, None) for alpha in alphas]
 if num_jobs > 1:
     print("Using joblib...")
     results = Parallel(n_jobs=num_jobs)(
-        delayed(run_experiment)(alpha, kind, epsilons, temperature=temperature)
-        for alpha, kind, temperature in jobs)
+        delayed(run_experiment)(alpha, smoothing_method, epsilons,
+                                temperature=temperature)
+        for alpha, smoothing_method, temperature in jobs)
 else:
-    results = [run_experiment(alpha, kind, epsilons, temperature=temperature)
-               for alpha, kind, temperature in jobs]
-for _, alpha, kind, temperature, _, _, acc_test, accuracy_adv, _ in results:
+    results = [run_experiment(alpha, smoothing_method, epsilons,
+                              temperature=temperature)
+               for alpha, smoothing_method, temperature in jobs]
+for (_, alpha, smoothing_method, temperature, _, _, acc_test,
+     accuracy_adv, _) in results:
     for attack_method, accs in accuracy_adv.items():
         for epsilon, accs_ in zip(epsilons, accs):
             for label, acc in enumerate(accs_):
                 df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test,
-                               acc=acc, kind=kind, temperature=temperature,
+                               acc=acc, smoothing_method=smoothing_method,
+                               temperature=temperature,
                                label=label, attack_method=attack_method))
 df = pd.DataFrame(df)
 results_file = "res_dataframes/%s_%s_results_%s_exp_%s.csv" % (
