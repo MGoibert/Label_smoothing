@@ -37,14 +37,25 @@ def parse_cmdline_args():
         '--learning_rate', type=float, default=1e-4,
         help="learning rate for SGD")
     parser.add_argument(
+        '--smoothing_method', type=str,
+        help="which method to use in label-smoothing",
+        choices=["standard", "adversarial", "boltzmann", "second_best"],
+        nargs="+", default="adversarial")
+    parser.add_argument(
         '--num_alphas', type=int, default=11,
-        help="number of alphas to use in smoothing")
+        help="number of alphas to use in label-smoothing")
+    parser.add_argument(
+        '--min_alpha', type=float, default=0.,
+        help="minimum label-smoothing parameter")
+    parser.add_argument(
+        '--max_alpha', type=float, default=1.,
+        help="maximum label-smoothing parameter")
     parser.add_argument(
         '--min_epsilon', type=float, default=0.,
-        help="minimum adversarial perturbation in experiments")
+        help="minimum adversarial perturbation")
     parser.add_argument(
         '--max_epsilon', type=float, default=.25,
-        help="maximum adversarial perturbation in experiments")
+        help="maximum adversarial perturbation")
     parser.add_argument(
         '--num_epsilons', type=int, default=11,
         help="number of epsilons to use in smoothing")
