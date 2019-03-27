@@ -137,7 +137,9 @@ alphas = np.linspace(0, 1, num=args.num_alphas)
 num_epochs = args.num_epochs
 num_iter_attack = args.num_iter_attack
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
-                       num=args.num_epsilons), [5, 10, 100, 1000, 10000])
+                       num=args.num_epsilons),
+                     [5, 10, 100, 1000, 10000]
+)
 experiment_name = args.experiment_name
 if experiment_name == "temperature":
     temperatures = np.logspace(-4, 3, num=8)

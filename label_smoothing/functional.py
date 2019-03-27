@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from .attacks import FGSM, BIM, DeepFool, CW, TriangularAttack
+from .attacks import FGSM, BIM, DeepFool, CW, CWBis, TriangularAttack
 
 cuda = torch.cuda.is_available()
 logging.info("CUDA Available: {}".format(cuda))
@@ -256,10 +256,36 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         else:
             num_iter = 100
 
+    # instantiate attacker
+    kwargs = {}
+    if attack_method == "DeepFool":
+        attacker = DeepFool(model, lims=lims, num_classes=num_classes,
+                            num_iter=num_iter)
+    elif attack_method == "triangular":
+        attacker = TriangularAttack(model)
+    elif hasattr(attack_method, "__call__"):
+        attacker = attack_method
+    elif attack_method == "FGSM":
+        attacker = FGSM(model, loss_func, lims=lims)
+    elif attack_method == "BIM":
+        attacker = BIM(model, loss_func, lims=lims, num_iter=num_iter)
+    elif attack_method == "CW":
+        attacker = CW(model, lims=lims, num_iter=num_iter)
+    elif attack_method == "CWBis":
+        attacker = CWBis(model, targeted=False, num_classes=num_classes,
+                         cuda=cuda, lims=lims, num_iter=num_iter)
+    else:
+        raise NotImplementedError(attack_method)
+
     print("Running %s attack" % attack_method)
     model.eval()
     for batch_idx, (data, target) in enumerate(test_loader):
-        num_test[-1] += len(data)
+        batch_size = len(data)
+        print("batch %i (%i examples)" % (batch_idx + 1, batch_size))
+        if attack_method == "CWBis":
+            kwargs["batch_idx"] = batch_idx
+
+        num_test[-1] += batch_size
         for label, counts in zip(*np.unique(target.cpu().data.numpy(),
                                         return_counts=True)):
             num_test[label] += counts
@@ -268,6 +294,8 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         data, target = data.to(device), target.to(device)
         data.requires_grad = True
         output = model(data)
+        if attack_method == "FGSM":
+            kwargs["pred"] = output
 
         # Prediction (original data)
         init_pred = output.argmax(1)
@@ -283,27 +311,6 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                 kind=kind, temperature=temperature)
         else:
             target_smooth = target
-
-        # instantiate attacker
-        kwargs = {}
-        if attack_method == "DeepFool":
-            attacker = DeepFool(model, lims=lims, num_classes=num_classes,
-                                num_iter=num_iter)
-        elif attack_method == "triangular":
-            attacker = TriangularAttack(model)
-        elif hasattr(attack_method, "__call__"):
-            attacker = attack_method
-        elif attack_method == "FGSM":
-            kwargs["pred"] = output
-            attacker = FGSM(model, loss_func, lims=lims)
-        elif attack_method == "BIM":
-            attacker = BIM(model, loss_func, lims=lims, num_iter=num_iter)
-        elif attack_method == "CW":
-            attacker = CW(model, targeted=False, num_classes=num_classes,
-                          cuda=cuda, lims=lims, num_iter=num_iter)
-            kwargs["batch_idx"] = batch_idx
-        else:
-            raise NotImplementedError(attack_method)
 
         # run attacker
         if attack_method == "DeepFool":
