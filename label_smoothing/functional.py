@@ -264,6 +264,9 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
     num_test = np.zeros(num_classes + 1)
     adv_examples = {}
 
+    if len(np.unique(epsilons)) != len(epsilons):
+        raise ValueError("The epsilons must be unique!")
+
     if num_iter is None:
         if attack_method == "BIM":
             num_iter = 4
@@ -299,10 +302,11 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
         if attack_method == "CWBis":
             kwargs["batch_idx"] = batch_idx
 
-        num_test[-1] += batch_size
+        # count number of examples per class
         for label, counts in zip(*np.unique(target.cpu().data.numpy(),
-                                        return_counts=True)):
+                                            return_counts=True)):
             num_test[label] += counts
+        num_test[-1] += batch_size  # total
 
         # initial forward pass
         data, target = data.to(device), target.to(device)
@@ -353,14 +357,13 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
             if epsilon not in correct:
                 correct[epsilon] = np.zeros(num_classes + 1)
 
-            # Prediction (perturbated data)
-            correct[epsilon] = correct.get(epsilon, 0)
+            # count correct predictions on perturbed data
             final_pred = o.argmax(1)
             correct[epsilon][-1] += (final_pred == target).sum().item()
             for label in np.unique(target):
                 mask = (target == label).astype(bool)
-                correct[epsilon][label] += (
-                    final_pred[mask] == target[mask]).sum().item()
+                num_hits = (final_pred[mask] == target[mask]).sum().item()
+                correct[epsilon][label] += num_hits
                 assert correct[epsilon][label] <= num_test[label]
 
             # XXX uncomment
