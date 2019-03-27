@@ -132,7 +132,7 @@ def _fct_to_min(adv_x, reconstruct_data, target, logits, c, confidence=0, lims=(
 # ----------
 
 
-def CW_attack(data, target, model, binary_search_steps=5, max_iterations=200,
+def CW_attack(data, target, model, binary_search_steps=5, num_iter=200,
               confidence=0, learning_rate=0.05, initial_c=1e-2, lims=(0, 1)):
     """
     Carlini & Wagner attack.
@@ -155,8 +155,7 @@ def CW_attack(data, target, model, binary_search_steps=5, max_iterations=200,
         perturb = torch.cat([perturb_.unsqueeze(0) for perturb_ in perturb])
         found_adv = torch.zeros(batch_size).byte()
 
-        for iteration in range(max_iterations):
-            print(iteration)
+        for iteration in range(num_iter):
             x = _to_model_space(att_original + perturb, lims=lims)
             logits = _soft_to_logit(model(x))
             cost = _fct_to_min(x, reconstruct_original, target, logits, c,

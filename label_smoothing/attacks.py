@@ -11,6 +11,7 @@ import torch
 from torch.autograd import Variable
 
 from .externals.rwightman.attacks import AttackCarliniWagnerL2
+from .custom_cw_attack import CW_attack
 
 
 def where(cond, x, y):
@@ -99,15 +100,33 @@ class BIM(_BaseAttack):
         return self.clamp(x_adv)
 
 
-class CW(_BaseAttack, AttackCarliniWagnerL2):
+class CW(_BaseAttack):
     """
     Carlini-Wagner Method
     """
-    def __init__(self, model, lims=(-1, 1), targeted=True, search_steps=None,
-                 num_iter=None, cuda=None, debug=False, num_classes=1000):
+    def __init__(self, model, lims=(-1, 1), binary_search_steps=10,
+                 num_iter=200):
+        _BaseAttack.__init__(self, model, lims)
+        self.binary_search_steps = binary_search_steps
+        self.num_iter = num_iter
+
+    def run(self, data, target, confidence, **kwargs):
+        perturbed_data = CW_attack(
+            data, target, self.model, num_iter=self.num_iter,
+            binary_search_steps=self.binary_search_steps, **kwargs)
+        return self.clamp(perturbed_data)
+
+
+class CWBis(_BaseAttack, AttackCarliniWagnerL2):
+    """
+    Carlini-Wagner Method
+    """
+    def __init__(self, model, lims=(-1, 1), targeted=False,
+                 binary_search_steps=10, num_iter=200, cuda=None,
+                 debug=False, num_classes=1000):
         _BaseAttack.__init__(self, model, lims)
         AttackCarliniWagnerL2.__init__(
-            self, model, targeted=targeted, search_steps=search_steps,
+            self, model, targeted=targeted, search_steps=binary_search_steps,
             max_steps=num_iter, cuda=cuda, debug=debug, clamp_min=lims[0],
             clamp_max=lims[1], clamp_fn=None, num_classes=num_classes)
 
