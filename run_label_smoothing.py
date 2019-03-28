@@ -139,7 +139,6 @@ epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
                                  num=args.num_epsilons),
                      [5, 10, 100, 1000, 10000])
 epsilons = np.unique(epsilons)
-experiment_name = args.experiment_name
 temperatures = np.logspace(-4, -1, num=4)
 model = args.model
 attack_methods = args.attack_method
@@ -190,11 +189,12 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     print("Accuracy (Test) = {} ".format(acc_test))
 
     # run attack (possibly massively in parallel over test data and epsilons)
-    accuracy_adv = {}
+    adv_accs = {}
     t0 = time.time()
+    df = []
     for attack_method in attack_methods:
-        accuracy_adv[attack_method] = []
-        accs_adv, _ = run_attack(net, test_loader, loss_func, epsilons,
+        adv_accs[attack_method] = []
+        accs, _ = run_attack(net, test_loader, loss_func, epsilons,
                                  attack_method=attack_method, alpha=alpha,
                                  num_classes=num_classes,
                                  smoothing_method=smoothing_method,
@@ -202,14 +202,21 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
                                  num_iter=num_iter_attack)
         delta_time = time.time() - t0
 
-        for epsilon in epsilons:
-            acc_adv = accs_adv[epsilon]
-            # ex_adv = exs_adv[epsilon]
-            # print("epsilon = %s" % epsilon)
-            accuracy_adv[attack_method].append(acc_adv)
-        print("Execution time = %.2f sec" % delta_time)
+        for epsilon, eps_accs in accs.items():
+            for label, acc in enumerate(eps_accs):
+                df.append(dict(alpha=alpha, attack_method=attack_method,
+                               temperature=temperature, acc=acc,
+                               epsilon=epsilon, label=label,
+                               smoothing_method=smoothing_method))
+
+    pid = os.getpid()
+    filename = "res_dataframes/tmp/pid=%i.csv" % pid
+    df = pd.DataFrame(df)
+    df.to_csv(filename)
+    print(filename)
+
     return (net, alpha, smoothing_method, temperature, loss_history, acc_tr,
-            acc_test, accuracy_adv, delta_time)
+            acc_test, df, delta_time)
 
 # run experiments in parallel with joblib
 # XXX You need to instal joblib version 0.11 like so
@@ -217,6 +224,9 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
 # XXX Newer versions produce the error:
 # XXX RuntimeError: Expected object of scalar type Float but got scalar type
 # XXX Double for argument #4 'mat1'
+
+if not os.path.exists("res_dataframes/tmp"):
+    os.makedirs("res_dataframes/tmp")
 
 df = []
 jobs = []
@@ -236,21 +246,10 @@ else:
     results = [run_experiment(alpha, smoothing_method, epsilons,
                               temperature=temperature)
                for alpha, smoothing_method, temperature in jobs]
-for (_, alpha, smoothing_method, temperature, _, _, acc_test,
-     accuracy_adv, _) in results:
-    for attack_method, accs in accuracy_adv.items():
-        for epsilon, accs_ in zip(epsilons, accs):
-            for label, acc in enumerate(accs_):
-                df.append(dict(alpha=alpha, epsilon=epsilon, acc_test=acc_test,
-                               acc=acc, smoothing_method=smoothing_method,
-                               temperature=temperature,
-                               label=label, attack_method=attack_method))
-df = pd.DataFrame(df)
-results_file = "res_dataframes/%s_%s_results_%s_exp_%s.csv" % (
-    dataset, model, experiment_name, "+".join(attack_methods))
-
-if not os.path.exists("res_dataframes/"):
-    os.makedirs("res_dataframes/")
+df = pd.concat(list(map(itemgetter(-2), results)))
+results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s.csv" % (
+    dataset, model, "+".join(smoothing_methods),
+    "+".join(attack_methods))
 
 df.to_csv(results_file, sep=",")
 print("Results written to file: %s" % results_file)
