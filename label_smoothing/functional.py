@@ -133,7 +133,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        learning_rate=0.1, verbose=1, alpha=0,
                        smoothing_method="standard", num_classes=None,
                        temperature=0.1, use_lbfgs=False,  compute_scores=True,
-                       enable_early_stopping=False):
+                       enable_early_stopping=True):
     """
     Training of a model using label smoothing.
     alpha is the parameter calibrating the strenght of the label smoothing

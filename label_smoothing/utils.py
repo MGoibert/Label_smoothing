@@ -24,9 +24,6 @@ def parse_cmdline_args():
         '--dataset', type=str, choices=["MNIST", "CIFAR10"],
         default="MNIST", help="choose the datset")
     parser.add_argument(
-        '--experiment_name', type=str, choices=["temperature", "all"],
-        default="all", help="batch size for SGD")
-    parser.add_argument(
         '--batch_size', type=int, default=100,
         help="batch size for SGD")
     parser.add_argument(
