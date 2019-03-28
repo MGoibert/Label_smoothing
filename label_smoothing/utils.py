@@ -30,7 +30,7 @@ def parse_cmdline_args():
         '--test_batch_size', type=int, default=1,
         help="batch size for testing")
     parser.add_argument(
-        '--num_epochs', type=int, default=7,
+        '--num_epochs', type=int, default=50,
         help="number of passes to make over data")
     parser.add_argument(
         '--learning_rate', type=float, default=1e-4,
@@ -75,7 +75,7 @@ def parse_cmdline_args():
         '--num_samples', type=int, default=10000,
         help="number of samples for triangular experiment")
     parser.add_argument(
-        '--num_iter_attack', type=int, default=None,
+        '--num_iter_attack', type=int, default=10,
         help="number of (outer-most) iterations for iterative attacks")
 
     return parser.parse_args()

@@ -248,7 +248,7 @@ def test_model(model, test_loader):
 
 def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                alpha=None, smoothing_method="adversarial", temperature=None,
-               num_classes=None, lims=(0, 1), num_iter=None):
+               num_classes=None, lims=(0, 1), num_iter=10):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
@@ -265,12 +265,6 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
 
     if len(np.unique(epsilons)) != len(epsilons):
         raise ValueError("The epsilons must be unique!")
-
-    if num_iter is None:
-        if attack_method == "BIM":
-            num_iter = 4
-        else:
-            num_iter = 100
 
     # instantiate attacker
     kwargs = {}
