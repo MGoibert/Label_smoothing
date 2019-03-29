@@ -149,6 +149,9 @@ if type(attack_methods)==str:
 if attack_methods == "DeepFool":
     epsilons = [1]
 
+to_save_model = args.to_save_model
+use_saved_model = args.use_saved_model
+
 # define what device we are using
 #cuda = torch.cuda.is_available()
 #logging.info("CUDA Available: {}".format(cuda))
@@ -179,10 +182,40 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     print("label-smoothing method = {} \n".format(smoothing_method))
     print("alpha = %.2f" % alpha)
 
-    net, loss_history, acc_tr = train_model_smooth(
-        net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
-        smoothing_method=smoothing_method, num_classes=num_classes,
-        temperature=temperature)
+    if not os.path.exists("model_dict/"):
+        os.makedirs("model_dict/")
+    
+    file_dict = "model_dict/%s.pt" % (dataset + "_" + model)
+    model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature)
+    
+    if  os.path.exists(file_dict):
+        checkpoint = torch.load(file_dict)
+        if use_saved_model == True and model_specifications in checkpoint.keys():
+            to_train = False
+            net.load_state_dict(checkpoint[model_specifications])
+        else:
+            print("No saved model (specifications)")
+            to_train = True
+    else:
+        checkpoint = {}
+        print("No saved model (whole architecture)")
+        to_train = True
+
+    if to_train == True:
+        net, loss_history, acc_tr = train_model_smooth(
+            net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
+            smoothing_method=smoothing_method, num_classes=num_classes,
+            temperature=temperature)
+
+    if to_save_model == True:
+        checkpoint.update({
+        model_specifications:net.state_dict(),
+        "loss_%s"%(model_specifications):loss_history,
+        "acc_tr_%s"%(model_specifications):acc_tr
+        })
+        torch.save(checkpoint, file_dict)
+        print("Model saved in %s"%file_dict)
+
     acc_test = test_model(net, test_loader)
 
     print("Accuracy (training) = %g " % acc_tr)
@@ -201,6 +234,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
                                  temperature=temperature, lims=lims,
                                  num_iter=num_iter_attack)
         delta_time = time.time() - t0
+        print("Time elapsed: %.4f" % delta_time)
 
         for epsilon, eps_accs in accs.items():
             for label, acc in enumerate(eps_accs):
