@@ -66,6 +66,12 @@ def parse_cmdline_args():
         choices=["FGSM", "DeepFool", "BIM", "CW", "CWBis", "triangular"],
         nargs="+", default="FGSM")
     parser.add_argument(
+        '--to_save_model', action="store_true",
+        help="save model after training? without mentioning: No")
+    parser.add_argument(
+        '--use_saved_model', action="store_true",
+        help="use a previously saved model instead of training? Without mentioning: No")
+    parser.add_argument(
         '--num_jobs', type=int, default=1,
         help="number of jobs to spawn for the experiment")
     parser.add_argument(
