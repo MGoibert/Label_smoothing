@@ -166,15 +166,19 @@ Running
 def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
+        net = LeNet()
         # load the pretrained net
         pretrained_net = "lenet_mnist_model.pth"
         net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
     elif dataset + "_" + model == "MNIST_Linear":
         net0 = MNISTMLP()
+        net = MNISTMLP()
     elif dataset + "_" + model == "CIFAR10_LeNet":
         net0 = LeNetCIFAR10()
+        net = LeNetCIFAR10()
     elif dataset + "_" + model == "CIFAR10_ResNet":
         net0 = ResNet18()
+        net = ResNet18()
 
     net0 = net0.to(device)
 
@@ -193,6 +197,9 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
         if use_saved_model == True and model_specifications in checkpoint.keys():
             to_train = False
             net.load_state_dict(checkpoint[model_specifications])
+            loss_history = checkpoint["loss_%s"%(model_specifications)]
+            acc_tr = checkpoint["acc_tr_%s"%(model_specifications)]
+            print("Trained model %s with spe. %s loaded successfully" %(file_dict, model_specifications))
         else:
             print("No saved model (specifications)")
             to_train = True
