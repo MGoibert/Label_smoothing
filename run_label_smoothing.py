@@ -133,6 +133,7 @@ num_jobs = args.num_jobs        # for parallelisation
 loss_func = smooth_cross_entropy
 num_classes = 10
 alphas = np.linspace(args.min_alpha, args.max_alpha, num=args.num_alphas)
+alphas = [0.0, 0.001, 0.003, 0.005, 0.007, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
 num_epochs = args.num_epochs
 num_iter_attack = args.num_iter_attack
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
@@ -181,19 +182,21 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
         net = ResNet18()
 
     net0 = net0.to(device)
+    net = net.to(device)
 
     print(net0)
     print("label-smoothing method = {} \n".format(smoothing_method))
-    print("alpha = %.2f" % alpha)
+    print("alpha = %.4f" % alpha)
 
     if not os.path.exists("model_dict/"):
         os.makedirs("model_dict/")
     
     file_dict = "model_dict/%s.pt" % (dataset + "_" + model)
     model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature)
+    print("model spe.:", model_specifications)
     
     if  os.path.exists(file_dict):
-        checkpoint = torch.load(file_dict)
+        checkpoint = torch.load(file_dict, map_location='cpu')
         if use_saved_model == True and model_specifications in checkpoint.keys():
             to_train = False
             net.load_state_dict(checkpoint[model_specifications])
