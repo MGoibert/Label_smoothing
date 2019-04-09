@@ -106,7 +106,7 @@ elif dataset == "CIFAR10":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        elif i>1000 and i<=1500:
+        else:
             test.append(x)
 
     # Limit values for X
@@ -140,7 +140,6 @@ epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
                                  num=args.num_epsilons),
                      [5, 10, 100, 1000, 10000])
 epsilons = [1]
-epsilons = np.unique(epsilons)
 temperatures = np.logspace(-4, -1, num=4)
 model = args.model
 attack_methods = args.attack_method
@@ -189,15 +188,19 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     print("label-smoothing method = {} \n".format(smoothing_method))
     print("alpha = %.4f" % alpha)
 
+    print(net0)
+    print("label-smoothing method = {} \n".format(smoothing_method))
+    print("alpha = %.2f" % alpha)
+
     if not os.path.exists("model_dict/"):
         os.makedirs("model_dict/")
     
     file_dict = "model_dict/%s.pt" % (dataset + "_" + model)
     model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature)
     print("model spe.:", model_specifications)
-    
+       
     if  os.path.exists(file_dict):
-        checkpoint = torch.load(file_dict, map_location='cpu')
+        checkpoint = torch.load(file_dict)
         if use_saved_model == True and model_specifications in checkpoint.keys():
             to_train = False
             net.load_state_dict(checkpoint[model_specifications])

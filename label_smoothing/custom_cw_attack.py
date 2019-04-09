@@ -31,7 +31,7 @@ def _to_model_space(x, lims=(0, 1)):
 
     # from (-inf, +inf) to (-1, +1)
     x = (1 - torch.exp(-2 * x * 0.999)) / (1 + torch.exp(
-        -2 * x * 0.999))
+        -2 * x * 0.999999999999999))
 
     # map from (-1, +1) to (min, max)
     a = (lims[0] + lims[1]) / 2
@@ -98,6 +98,8 @@ def _fct_to_min(adv_x, reconstruct_data, target, y_pred, c, confidence=0, lims=(
 
     c_min = target.data # sans numpy implem
 
+    # c_min = target.data.numpy()
+
     # We need the index of the largest logits that does not correspond to the
     # original class
     # index of all the logits exept the original class
@@ -116,6 +118,19 @@ def _fct_to_min(adv_x, reconstruct_data, target, y_pred, c, confidence=0, lims=(
     #c_max = c_max * (c_max < c_min) + (c_max + 1) * (c_max >= c_min)
 
     c_max = (torch.stack( [ a != a[i] for a, i in zip(y_pred, target) ] ).double()*y_pred).max(dim=-1)[1]
+    #ind = np.array(
+    #    [[i for i in range(len(logits[t].squeeze())) if i != target[t].item()]
+    #     for t in range(target.shape[0])])
+    # index of the largest logit in the list of all logits exept the one of
+    # the original class. The list of logits has been modified, so the values
+    # of the index too.
+    #c_max = [l.squeeze()[i].argmax(-1, keepdim=True).item()
+    #         for l, i in zip(logits, ind)]
+    #c_max = np.array(c_max)
+    # the indices after the original class have been shifted one place to the
+    # left. We need to shift back to the right the value of c_max iff c_max
+    # is superior or equal to the index of the original class (c_min)
+    #c_max = c_max * (c_max < c_min) + (c_max + 1) * (c_max >= c_min)
 
     # Constraint part of the objective function: corresponds to the constraint
     # that the classifier must misclassified the adversarial example
@@ -125,6 +140,9 @@ def _fct_to_min(adv_x, reconstruct_data, target, y_pred, c, confidence=0, lims=(
     #is_adv_loss = torch.from_numpy(is_adv_loss).to(adv_x.device)
 
     is_adv_loss = torch.max(logits[i, c_min] - logits[i, c_max] + confidence, torch.zeros_like(logits[i, c_min])).to(adv_x.device)
+    #is_adv_loss = np.maximum(
+    #    (logits[i, c_min] - logits[i, c_max] + confidence).data.numpy(), 0)
+    #is_adv_loss = torch.from_numpy(is_adv_loss).to(adv_x.device)
 
     # Perturbation size part of the objective function: corresponds to the
     # minimization of the distance between the "true" data and the adv. data.
@@ -152,17 +170,16 @@ def CW_attack(data, target, model, binary_search_steps=5, num_iter=50,
     lower_bound = np.zeros(batch_size)
     upper_bound = np.ones(batch_size) * np.inf
     best_x = data
-    
+
     for binary_search_step in range(binary_search_steps):
         perturb = [torch.zeros_like(att_original[t], requires_grad=True)
                    for t in range(batch_size)]
         optimizer_CW = [torch.optim.Adam([perturb[t]], lr=learning_rate)
                         for t in range(batch_size)]
-        perturb = torch.cat([perturb_.unsqueeze(0) for perturb_ in perturb])
         found_adv = torch.zeros(batch_size).byte()
 
         for iteration in range(num_iter):
-            x = _to_model_space(att_original + perturb, lims=lims)
+            x = _to_model_space(att_original + torch.cat([perturb_.unsqueeze(0) for perturb_ in perturb]) , lims=lims)
             y_pred = model(x)
             logits = _soft_to_logit(y_pred)
             cost = _fct_to_min(x, reconstruct_original, target, y_pred, c,
