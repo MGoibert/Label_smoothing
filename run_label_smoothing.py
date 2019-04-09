@@ -106,7 +106,7 @@ elif dataset == "CIFAR10":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        else:
+        elif i>1000 and i<=1500:
             test.append(x)
 
     # Limit values for X
@@ -139,6 +139,7 @@ num_iter_attack = args.num_iter_attack
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
                                  num=args.num_epsilons),
                      [5, 10, 100, 1000, 10000])
+epsilons = [1]
 epsilons = np.unique(epsilons)
 temperatures = np.logspace(-4, -1, num=4)
 model = args.model
