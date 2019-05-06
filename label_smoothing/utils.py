@@ -83,5 +83,14 @@ def parse_cmdline_args():
     parser.add_argument(
         '--num_iter_attack', type=int, default=10,
         help="number of (outer-most) iterations for iterative attacks")
+    parser.add_argument(
+        '--adv_training', action="store_true",
+        help="Use adversarial training as baseline to compare? Without mentioning: No")
+    parser.add_argument(
+        '--adv_training_param', type=float, default=0.2,
+        help="Epsilon parameter for adversarial training")
+    parser.add_argument(
+        '--adv_training_reg_param', type=float, default=0.75,
+        help="Alpha (regularisation) parameter for adversarial training")
 
     return parser.parse_args()

@@ -133,7 +133,8 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        learning_rate=0.1, verbose=1, alpha=0,
                        smoothing_method="standard", num_classes=None,
                        temperature=0.1, use_lbfgs=False,  compute_scores=True,
-                       enable_early_stopping=True):
+                       enable_early_stopping=True, adv_training=False, adv_training_param=0.2, 
+                       adv_training_reg_param=0.75):
     """
     Training of a model using label smoothing.
     alpha is the parameter calibrating the strenght of the label smoothing
@@ -167,6 +168,8 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
             # prepare mini-batch
             x_batch, y_batch = x_batch.to(device), y_batch.to(device)
             x_batch = x_batch.double()
+            if adv_training:
+                x_batch.requires_grad = True
 
             def closure():
                 optimizer.zero_grad()
@@ -177,8 +180,18 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                     num_classes=num_classes,
                     temperature=temperature)
                 loss = loss_func(y_pred, smoothed_y_batch)
-                loss.backward()
-                return loss
+                loss.backward(retain_graph=True)
+                if adv_training:
+                    x_batch_perturbated = x_batch + adv_training_param*x_batch.grad.data.sign()
+                    model.zero_grad()
+                    y_pred_perturbated = model(x_batch_perturbated)
+                    loss_perturbated = loss_func(y_pred_perturbated, smoothed_y_batch)
+                    loss_tot = adv_training_reg_param*loss + (1-adv_training_reg_param)*loss_perturbated
+                    loss_tot.backward(retain_graph=True)
+                    return loss_tot
+                else:
+                    return loss
+                #return loss
 
             # gradient step
             if use_lbfgs:
