@@ -117,6 +117,8 @@ elif dataset == "CIFAR10":
     classes = ('plane', 'car', 'bird', 'cat',
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
+    os.remove(root+ "/cifar-10-python.tar.gz")
+
 
 elif dataset == "SVHN":
 
@@ -159,32 +161,49 @@ test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
             test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
 
 
-# Parameters
 
-num_jobs = args.num_jobs        # for parallelisation
+# ------------------ Parameters
+
+# Model parameters
+model = args.model
+num_jobs = args.num_jobs
 loss_func = smooth_cross_entropy
 num_classes = 10
+num_epochs = args.num_epochs
+
+# Attack parameters
+attack_methods = args.attack_method
+if type(attack_methods)==str:
+    attack_methods = [attack_methods]
+num_iter_attack = args.num_iter_attack
+
+# Label Smoothing parameters
+smoothing_methods = args.smoothing_method
+if type(smoothing_methods)==str:
+    smoothing_methods = [smoothing_methods]
+temperatures = np.logspace(-4, -1, num=4)
 alphas = np.linspace(args.min_alpha, args.max_alpha, num=args.num_alphas)
 alphas = [0.0, 0.001, 0.003, 0.005, 0.007, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
-num_epochs = args.num_epochs
-num_iter_attack = args.num_iter_attack
+
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
                                  num=args.num_epsilons),
                      [5, 10, 100, 1000, 10000])
-alphas = [0]
-epsilons = [1]
-temperatures = np.logspace(-4, -1, num=4)
-model = args.model
-attack_methods = args.attack_method
-smoothing_methods = args.smoothing_method
-if type(attack_methods)==str:
-    attack_methods = [attack_methods]
+#alphas = [0]
+#epsilons = [1]
 
-if attack_methods == "DeepFool":
-    epsilons = [1]
+# Baseline (adversarial training) parameters
+adv_training = args.adv_training
+if adv_training:
+    print("Adversarial training enabled")
+adv_training_param = args.adv_training_param
+adv_training_reg_param = args.adv_training_reg_param
+if adv_training:
+    alphas = [0.0]
 
+# Saving mode parameters
 to_save_model = args.to_save_model
 use_saved_model = args.use_saved_model
+
 
 # define what device we are using
 #cuda = torch.cuda.is_available()
@@ -228,7 +247,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if not os.path.exists("model_dict/"):
         os.makedirs("model_dict/")
     
-    file_dict = "model_dict/%s.pt" % (dataset + "_" + model)
+    file_dict = "model_dict/%s_adv_training.pt" % (dataset + "_" + model)
     model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature)
     print("model spe.:", model_specifications)
        
@@ -252,7 +271,8 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
         net, loss_history, acc_tr = train_model_smooth(
             net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
             smoothing_method=smoothing_method, num_classes=num_classes,
-            temperature=temperature)
+            temperature=temperature, adv_training=adv_training,
+            adv_training_param=adv_training_param, adv_training_reg_param=adv_training_reg_param)
 
     if to_save_model == True:
         checkpoint.update({
@@ -328,7 +348,7 @@ else:
                               temperature=temperature)
                for alpha, smoothing_method, temperature in jobs]
 df = pd.concat(list(map(itemgetter(-2), results)))
-results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s.csv" % (
+results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s_adv_training.csv" % (
     dataset, model, "+".join(smoothing_methods),
     "+".join(attack_methods))
 
