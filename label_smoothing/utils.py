@@ -21,7 +21,7 @@ def parse_cmdline_args():
         description="Run experiments like a boss!",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '--dataset', type=str, choices=["MNIST", "CIFAR10"],
+        '--dataset', type=str, choices=["MNIST", "CIFAR10", "SVHN"],
         default="MNIST", help="choose the datset")
     parser.add_argument(
         '--batch_size', type=int, default=100,

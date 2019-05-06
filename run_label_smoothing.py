@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.io import loadmat
+import urllib.request
 
 from sklearn.utils import check_random_state
 
@@ -116,6 +118,36 @@ elif dataset == "CIFAR10":
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 
+elif dataset == "SVHN":
+
+    # ---------------- Import SVHN
+
+    root = './data'
+    transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+    train_set = dset.SVHN(root=root, split="train",
+                           transform=transform, download=True)
+    test_set = dset.SVHN(root=root, split="test",
+                           transform=transform, download=True)
+
+    val_data = []
+    test = []
+    for i, x in enumerate(test_set):
+        if i < 2000:
+            val_data.append(x)
+        else:
+            test.append(x)
+
+    # Limit values for X
+    lims = -1, 1
+
+    # Remove the big files downloaded
+    os.remove(root+ "/train_32x32.mat")
+    os.remove(root+ "/test_32x32.mat")
+
+
 train_loader = torch.utils.data.DataLoader(dataset=train_set,
                                            batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(dataset=test, shuffle=True,
@@ -139,6 +171,7 @@ num_iter_attack = args.num_iter_attack
 epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
                                  num=args.num_epsilons),
                      [5, 10, 100, 1000, 10000])
+alphas = [0]
 epsilons = [1]
 temperatures = np.logspace(-4, -1, num=4)
 model = args.model
@@ -174,10 +207,10 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     elif dataset + "_" + model == "MNIST_Linear":
         net0 = MNISTMLP()
         net = MNISTMLP()
-    elif dataset + "_" + model == "CIFAR10_LeNet":
+    elif dataset + "_" + model == "CIFAR10_LeNet" or dataset + "_" + model == "SVHN_LeNet":
         net0 = LeNetCIFAR10()
         net = LeNetCIFAR10()
-    elif dataset + "_" + model == "CIFAR10_ResNet":
+    elif dataset + "_" + model == "CIFAR10_ResNet" or dataset + "_" + model == "SVHN_ResNet":
         net0 = ResNet18()
         net = ResNet18()
 
