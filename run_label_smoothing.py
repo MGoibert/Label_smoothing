@@ -82,7 +82,7 @@ if dataset == "MNIST":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        elif i > 1000 and i <=2000:
+        else:
             test.append(x)
 
     # Limit values for X
@@ -108,7 +108,7 @@ elif dataset == "CIFAR10":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        elif i >= 1000 and i < 3000:
+        else:
             test.append(x)
 
     # Limit values for X
@@ -139,7 +139,7 @@ elif dataset == "SVHN":
     for i, x in enumerate(test_set):
         if i < 2000:
             val_data.append(x)
-        elif i >= 2000 and i < 7000:
+        else
             test.append(x)
 
     # Limit values for X
