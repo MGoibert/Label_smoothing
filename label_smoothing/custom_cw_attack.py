@@ -150,7 +150,7 @@ def _fct_to_min(adv_x, reconstruct_data, target, y_pred, c, confidence=0, lims=(
     l2_dist = ((adv_x - reconstruct_data) **2).sum(1).sum(1).sum(1) / scale
 
     # Objective function
-    tot_dist = l2_dist + c * is_adv_loss
+    tot_dist = l2_dist.to(adv_x.device) + c.to(adv_x.device) * is_adv_loss.to(adv_x.device)
     return tot_dist
 
 # ----------
