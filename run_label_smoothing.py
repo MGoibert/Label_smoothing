@@ -82,7 +82,7 @@ if dataset == "MNIST":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        else:
+        elif i > 1000 and i <=2000:
             test.append(x)
 
     # Limit values for X
@@ -108,7 +108,7 @@ elif dataset == "CIFAR10":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        else:
+        elif i >= 1000 and i < 3000:
             test.append(x)
 
     # Limit values for X
@@ -117,7 +117,7 @@ elif dataset == "CIFAR10":
     classes = ('plane', 'car', 'bird', 'cat',
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
-    os.remove(root+ "/cifar-10-python.tar.gz")
+    #os.remove(root+ "/cifar-10-python.tar.gz")
 
 
 elif dataset == "SVHN":
@@ -139,7 +139,7 @@ elif dataset == "SVHN":
     for i, x in enumerate(test_set):
         if i < 2000:
             val_data.append(x)
-        else:
+        elif i >= 2000 and i < 7000:
             test.append(x)
 
     # Limit values for X
@@ -183,15 +183,12 @@ if type(smoothing_methods)==str:
     smoothing_methods = [smoothing_methods]
 temperatures = np.logspace(-4, -1, num=4)
 alphas = np.linspace(args.min_alpha, args.max_alpha, num=args.num_alphas)
-alphas = [0.0, 0.001, 0.003, 0.005, 0.007, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
 
-epsilons = np.append(np.linspace(args.min_epsilon, args.max_epsilon,
-                                 num=args.num_epsilons),
-                     [5, 10, 100, 1000, 10000])
-#alphas = [0]
-#epsilons = [1]
+epsilons = np.linspace(args.min_epsilon, args.max_epsilon,
+                                 num=args.num_epsilons)
 
 # Baseline (adversarial training) parameters
+adv_message = ""
 adv_training = args.adv_training
 if adv_training:
     print("Adversarial training enabled")
@@ -199,6 +196,7 @@ adv_training_param = args.adv_training_param
 adv_training_reg_param = args.adv_training_reg_param
 if adv_training:
     alphas = [0.0]
+    adv_message = "_adv_training"
 
 # Saving mode parameters
 to_save_model = args.to_save_model
@@ -220,7 +218,6 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
         net = LeNet()
-        # load the pretrained net
         pretrained_net = "lenet_mnist_model.pth"
         net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
     elif dataset + "_" + model == "MNIST_Linear":
@@ -240,15 +237,11 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     print("label-smoothing method = {} \n".format(smoothing_method))
     print("alpha = %.4f" % alpha)
 
-    print(net0)
-    print("label-smoothing method = {} \n".format(smoothing_method))
-    print("alpha = %.2f" % alpha)
-
     if not os.path.exists("model_dict/"):
         os.makedirs("model_dict/")
     
-    file_dict = "model_dict/%s_adv_training.pt" % (dataset + "_" + model)
-    model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature)
+    file_dict = "model_dict/%s.pt" % (dataset + "_" + model)
+    model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature) + str(adv_message)
     print("model spe.:", model_specifications)
        
     if  os.path.exists(file_dict):
@@ -348,9 +341,9 @@ else:
                               temperature=temperature)
                for alpha, smoothing_method, temperature in jobs]
 df = pd.concat(list(map(itemgetter(-2), results)))
-results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s_adv_training.csv" % (
+results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s%s.csv" % (
     dataset, model, "+".join(smoothing_methods),
-    "+".join(attack_methods))
+    "+".join(attack_methods), adv_message)
 
 df.to_csv(results_file, sep=",")
 print("Results written to file: %s" % results_file)
