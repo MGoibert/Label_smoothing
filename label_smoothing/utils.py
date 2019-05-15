@@ -87,10 +87,10 @@ def parse_cmdline_args():
         '--adv_training', action="store_true",
         help="Use adversarial training as baseline to compare? Without mentioning: No")
     parser.add_argument(
-        '--adv_training_param', type=float, default=0.2,
+        '--adv_training_param', type=float, default=0.25,
         help="Epsilon parameter for adversarial training")
     parser.add_argument(
-        '--adv_training_reg_param', type=float, default=0.75,
+        '--adv_training_reg_param', type=float, default=0.5,
         help="Alpha (regularisation) parameter for adversarial training")
 
     return parser.parse_args()
