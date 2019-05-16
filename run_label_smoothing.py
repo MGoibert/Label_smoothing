@@ -215,6 +215,7 @@ Running
 
 
 def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
+    # Loading the correct NN architecture
     if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
         net = LeNet()
@@ -247,6 +248,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if  os.path.exists(file_dict):
         checkpoint = torch.load(file_dict)
         if use_saved_model == True and model_specifications in checkpoint.keys():
+            # Load an already trained model
             to_train = False
             net.load_state_dict(checkpoint[model_specifications])
             loss_history = checkpoint["loss_%s"%(model_specifications)]
@@ -261,6 +263,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
         to_train = True
 
     if to_train == True:
+        # Train you model (if not loaded before)
         net, loss_history, acc_tr = train_model_smooth(
             net0, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
             smoothing_method=smoothing_method, num_classes=num_classes,
@@ -268,6 +271,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
             adv_training_param=adv_training_param, adv_training_reg_param=adv_training_reg_param)
 
     if to_save_model == True:
+        # Save the trained model
         checkpoint.update({
         model_specifications:net.state_dict(),
         "loss_%s"%(model_specifications):loss_history,
@@ -286,6 +290,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     t0 = time.time()
     df = []
     for attack_method in attack_methods:
+        # Run the attack and outputs adversarial accuracy
         adv_accs[attack_method] = []
         accs, _ = run_attack(net, test_loader, loss_func, epsilons,
                                  attack_method=attack_method, alpha=alpha,
@@ -303,6 +308,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
                                epsilon=epsilon, label=label,
                                smoothing_method=smoothing_method))
 
+    # Save progressively
     pid = os.getpid()
     filename = "res_dataframes/tmp/pid=%i.csv" % pid
     df = pd.DataFrame(df)
@@ -322,6 +328,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
 if not os.path.exists("res_dataframes/tmp"):
     os.makedirs("res_dataframes/tmp")
 
+# Put the results in a dataframe
 df = []
 jobs = []
 for smoothing_method in smoothing_methods:
@@ -340,6 +347,7 @@ else:
     results = [run_experiment(alpha, smoothing_method, epsilons,
                               temperature=temperature)
                for alpha, smoothing_method, temperature in jobs]
+# Save your final results dataframe
 df = pd.concat(list(map(itemgetter(-2), results)))
 results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s%s.csv" % (
     dataset, model, "+".join(smoothing_methods),
