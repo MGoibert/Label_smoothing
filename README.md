@@ -75,3 +75,5 @@ FGSM attack with default strenght values will be run too.
 LeNet models with standard Label-Smoothing and default alpha values will be trained, and then DeepFool and CW attacks will be run.
 These attacks do not implement a strenght (epsilon) parameter so we can set the number of epsilon to 1.
   
+# Contacts
+For any question and inquiry on the code or on the paper; to report any bug, please contact me at: morgane.goibert@gmail.com
