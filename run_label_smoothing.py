@@ -139,7 +139,7 @@ elif dataset == "SVHN":
     for i, x in enumerate(test_set):
         if i < 2000:
             val_data.append(x)
-        else
+        else:
             test.append(x)
 
     # Limit values for X
@@ -243,7 +243,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     
     file_dict = "model_dict/%s.pt" % (dataset + "_" + model)
     model_specifications = str(smoothing_method) + "_" + str(alpha) + "_" + str(temperature) + str(adv_message)
-    print("model spe.:", model_specifications)
+    print("model spec:", model_specifications)
        
     if  os.path.exists(file_dict):
         checkpoint = torch.load(file_dict)
@@ -309,9 +309,12 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
                                smoothing_method=smoothing_method))
 
     # Save progressively
+    df = pd.DataFrame(df)
     pid = os.getpid()
     filename = "res_dataframes/tmp/pid=%i.csv" % pid
-    df = pd.DataFrame(df)
+    if os.path.exists(filename):
+        old_df = pd.read_csv(filename)
+        df = pd.concat([old_df, df])
     df.to_csv(filename)
     print(filename)
 
@@ -327,6 +330,11 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
 
 if not os.path.exists("res_dataframes/tmp"):
     os.makedirs("res_dataframes/tmp")
+
+print("Running with arguments:")
+for kw, val in vars(args).items():
+    print("\t%s ==> %s" % (kw, val))
+print("=" * 80)
 
 # Put the results in a dataframe
 df = []
