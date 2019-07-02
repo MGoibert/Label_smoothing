@@ -74,6 +74,13 @@ FGSM attack with default strenght values will be run too.
 
 LeNet models with standard Label-Smoothing and default alpha values will be trained, and then DeepFool and CW attacks will be run.
 These attacks do not implement a strenght (epsilon) parameter so we can set the number of epsilon to 1.
+
+### Plots
+
+You can create plots to visualize the results.
+You have to pass the .csv result dataframe as argument for plot_figures.py to run.
+
+For example, you can try ```ipython -- plot_figures.py res_dataframes/SVHN_LeNet_smoothing=standard+adversarial+boltzmann+second_best_attacks=FGSM.csv```
   
 # Contacts
 For any question and inquiry on the code or on the paper; to report any bug, please contact me at: morgane.goibert@gmail.com
