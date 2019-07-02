@@ -56,21 +56,21 @@ You can tune several items:
 ### Examples
 
 #### A very simple example
-```ipyhton --pdb -- run_label_smoothing.py --to_save_model --smoothing_method standard adversarial boltzmann second_best```
+```ipython --pdb -- run_label_smoothing.py --to_save_model --smoothing_method standard adversarial boltzmann second_best```
 
 This code will train a Linear (MLP) model on MNIST, using each of the four Label-Smoothing methods with 11 parameters alpha ranging from 0 to 1.
 Once trained, all these models will be saved. To test adversarial robustness, FGSM attack will be used (with each of the default value for epsilon).
 The accuracy results for each model and parameters will be exported.
 
 #### Tuning training
-```ipyhton --pdb -- run_label_smoothing.py --to_save_model --use_saved_model --dataset CIFAR10 --model ResNet --num_epochs 150 --batch_size 50 --test_batch_size 50```
+```ipython --pdb -- run_label_smoothing.py --to_save_model --use_saved_model --dataset CIFAR10 --model ResNet --num_epochs 150 --batch_size 50 --test_batch_size 50```
 
 This code will train a ResNet18 with standard Label-Smoothing (with default alpha values) on CIFAR10 dataset, with 150 epochs. The trained models will be saved, and if pre-trained models exist, they will be used (training skipped instead).
 FGSM attack with default strenght values will be run too.
 
 
 #### Tuning attacks
-```ipyhton --pdb -- run_label_smoothing.py --to_save_model --use_saved_model --dataset MNIST --model LeNet --attack_method DeepFool CW --num_epsilon 1```
+```ipython --pdb -- run_label_smoothing.py --to_save_model --use_saved_model --dataset MNIST --model LeNet --attack_method DeepFool CW --num_epsilon 1```
 
 LeNet models with standard Label-Smoothing and default alpha values will be trained, and then DeepFool and CW attacks will be run.
 These attacks do not implement a strenght (epsilon) parameter so we can set the number of epsilon to 1.
