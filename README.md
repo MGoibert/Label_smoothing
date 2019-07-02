@@ -1,7 +1,7 @@
 # Label-Smoothing and Adversarial Robustness
 
 This repository contains code to run Label Smoothing as a means to improve adversarial robustness for deep leatning, supervised classification tasks.
-See the paper for more information about Label-Smoothing and a full understanding of the hyperparatemer
+See the paper for more information about Label-Smoothing and a full understanding of the hyperparatemer: [Adversarial Robustness via Adversarial Label-Smoothing](https://arxiv.org/abs/1906.11567), by Goibert and Dohmatob.
 
 Supported datasets and NN architectures:
   - MNIST; MLP or LeNet
