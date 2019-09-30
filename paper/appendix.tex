@@ -1,0 +1,29 @@
+\appendix
+\section{Proofs}
+\label{sec:proofs}
+\begin{lemma}
+Let  $\alpha \in [0, 1]$, $t \in [\![k]\!]$, and $g \in \mathbb R^k$. The
+general solution of the problem
+\begin{eqnarray}
+  \underset{q \in \Delta_k,\, q^{(t)} \ge 1-\alpha}{\argmax}\; q^Tg
+\end{eqnarray}
+is $q^*=(1-\alpha) \delta_t + \alpha\bar{q}$, where $\bar{q}$ is any solution to
+the problem with $\alpha=0$, namely $\bar{q} \in \argmax_{q \in \Delta_k}q^tg$
+\label{thm:bumbednash}
+\end{lemma}
+\begin{proof}
+Consider the invertible change of variable $x = h(\bar{x}):=\epsilon\delta_1 +
+(1-\epsilon)\bar{x}$ which maps the simplex $\Delta_k$ unto itself, with inverse
+$\bar{x} = h^{-1}(x)=(1-\epsilon)^{-1}(x-\epsilon\delta_1)$.
+
+It follows, that
+$$
+\min_{x \in \Delta_k | x_1 \ge \epsilon}x^Tb=\min_{x \in \Delta_k |
+  x-\alpha\delta_1 \ge
+  0}x^Tb=\min_{(1-\epsilon)^{-1}(x-\epsilon\delta_1)}x^Tb=\min_{\bar{x} \in
+  \Delta_k}(\epsilon\delta_1+(1-\epsilon)\bar{x})^Tb,
+$$
+which is attained by $\bar{x}^* \in \text{argmin}_{\bar{x} \in
+  \Delta_k}\bar{x}^Tb=\text{ConvHull}(\text{argmin}_{j=1}^k b_j)$, yielding $
+x^*=\epsilon\delta_1 + (1-\epsilon)\bar{x}^*$.
+\end{proof}
