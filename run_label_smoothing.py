@@ -83,7 +83,7 @@ if dataset == "MNIST":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        else:
+        elif i >= 1000 and i < 2000:
             test.append(x)
 
     # Limit values for X
@@ -109,12 +109,12 @@ elif dataset == "CIFAR10":
     for i, x in enumerate(test_set):
         if i < 5000:
             val_data.append(x)
-        else:
+        elif i >= 5000 and i <8000:
             test.append(x)
-    #train_data = []
-    #for i, x in enumerate(train_set):
-    #    if i < 10000:
-    #        train_data.append(x)
+    train_data = []
+    for i, x in enumerate(train_set):
+        if i < 7000:
+            train_data.append(x)
 
     # Limit values for X
     lims = -1, 1
@@ -145,11 +145,11 @@ elif dataset == "SVHN":
     for i, x in enumerate(test_set):
         if i < 5000:
             val_data.append(x)
-        elif i >= 5000:
+        elif i >= 5000 and i < 9000:
             test.append(x)
     train_data = []
     for i, x in enumerate(train_set):
-        if i < 50000:
+        if i < 10000:
             train_data.append(x)
 
     # Limit values for X
@@ -160,7 +160,7 @@ elif dataset == "SVHN":
     #os.remove(root+ "/test_32x32.mat")
 
 
-train_loader = torch.utils.data.DataLoader(dataset=train_set,
+train_loader = torch.utils.data.DataLoader(dataset=train_data,
                                            batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(dataset=test, shuffle=True,
                                           batch_size=test_batch_size)
@@ -197,7 +197,8 @@ alphas = np.linspace(args.min_alpha, args.max_alpha, num=args.num_alphas)
 
 epsilons = np.linspace(args.min_epsilon, args.max_epsilon,
                                  num=args.num_epsilons)
-epsilons = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4]
+print("Epsilons = ", epsilons)
+#epsilons = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4]
 
 # Baseline (adversarial training) parameters
 adv_message = ""

@@ -291,7 +291,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        learning_rate=0.1, verbose=1, alpha=0,
                        smoothing_method="standard", num_classes=None,
                        temperature=0.1, use_lbfgs=False,  compute_scores=True,
-                       enable_early_stopping=True, adv_training=False, adv_training_param=0.2, 
+                       enable_early_stopping=False, adv_training=False, adv_training_param=0.2, 
                        adv_training_reg_param=0.75):
     """
     Training of a model using label smoothing.
@@ -313,10 +313,10 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         optimizer = optim.SGD(parameters, lr=learning_rate)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', patience=7, verbose=True,
-            factor=0.5)
+            optimizer, mode='min', patience=4, verbose=True,
+            factor=0.1)
     if adv_training:
-        pgd_attack = PGD(model, loss_func, eps = adv_training_param, alpha = adv_training_reg_param, iters = 20)
+        pgd_attack = PGD(model, loss_func, eps = adv_training_param, alpha = adv_training_reg_param, iters = 3)
     #scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [10], gamma=0.1)
 
     # main learning loop
@@ -345,13 +345,13 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                     temperature=temperature)
                 loss = loss_func(y_pred, smoothed_y_batch)
                 #loss.backward(retain_graph=True)
-                if adv_training and epoch >= 10:
+                if adv_training and epoch >= 20:
                     #x_adv_batch = PGD_training(model, x_batch, smoothed_y_batch, loss_func,
                     #    eps=adv_training_param, alpha=adv_training_reg_param, iters=20).double()
                     x_adv_batch = pgd_attack(x_batch, smoothed_y_batch)
                     y_pred_adv = model(x_adv_batch)
                     loss_adv = loss_func(y_pred_adv, smoothed_y_batch)
-                    loss_tot = (loss + loss_adv)/2
+                    loss_tot = 0.5*loss + 0.5*loss_adv
                     loss_tot.backward(retain_graph=True)
 
                     #x_batch_perturbated = x_batch + adv_training_param*x_batch.grad.data.sign()
@@ -374,7 +374,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                 optimizer.step()
 
         # validation stuff
-        if val_loader is not None and epoch >= 10:
+        if val_loader is not None and epoch >= 20:
             model.eval()
             for x_val, y_val in val_loader:
                 x_val, y_val = x_val.to(device), y_val.to(device)
@@ -436,7 +436,7 @@ def test_model(model, test_loader):
 
 def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                alpha=None, smoothing_method="adversarial", temperature=None,
-               num_classes=None, lims=(0, 1), num_iter=10):
+               num_classes=None, lims=(0, 1), num_iter=100):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
@@ -474,6 +474,7 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                          cuda=cuda, lims=lims, num_iter=num_iter)
     else:
         raise NotImplementedError(attack_method)
+    print("Num iter = ", num_iter)
 
     print("Running %s attack" % attack_method)
     model.eval()

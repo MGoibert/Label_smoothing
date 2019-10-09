@@ -1,0 +1,12 @@
+,acc,alpha,attack_method,epsilon,label,smoothing_method,temperature
+0,0.8815642458100559,0.0,CW,0.0,0,adversarial,
+1,0.9127849355797819,0.0,CW,0.0,1,adversarial,
+2,0.7641921397379913,0.0,CW,0.0,2,adversarial,
+3,0.6334440753045404,0.0,CW,0.0,3,adversarial,
+4,0.7706422018348624,0.0,CW,0.0,4,adversarial,
+5,0.6944099378881987,0.0,CW,0.0,5,adversarial,
+6,0.7772675086107922,0.0,CW,0.0,6,adversarial,
+7,0.7739504843918191,0.0,CW,0.0,7,adversarial,
+8,0.4485875706214689,0.0,CW,0.0,8,adversarial,
+9,0.5519125683060109,0.0,CW,0.0,9,adversarial,
+10,0.7234444444444444,0.0,CW,0.0,10,adversarial,

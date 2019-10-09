@@ -104,8 +104,8 @@ class CW(_BaseAttack):
     """
     Carlini-Wagner Method
     """
-    def __init__(self, model, lims=(-1, 1), binary_search_steps=4,
-                 num_iter=200):
+    def __init__(self, model, lims=(-1, 1), binary_search_steps=15,
+                 num_iter=20):
         _BaseAttack.__init__(self, model, lims=lims)
         self.binary_search_steps = binary_search_steps
         self.num_iter = num_iter
@@ -122,7 +122,7 @@ class CWBis(_BaseAttack, AttackCarliniWagnerL2):
     Carlini-Wagner Method
     """
     def __init__(self, model, lims=(-1, 1), targeted=False,
-                 binary_search_steps=10, num_iter=200, cuda=None,
+                 binary_search_steps=15, num_iter=20, cuda=None,
                  debug=False, num_classes=1000):
         _BaseAttack.__init__(self, model, lims)
         AttackCarliniWagnerL2.__init__(
@@ -137,7 +137,7 @@ class CWBis(_BaseAttack, AttackCarliniWagnerL2):
 
 
 class DeepFool(_BaseAttack):
-    def __init__(self, model, num_classes, lims=(-1, 1), num_iter=50):
+    def __init__(self, model, num_classes, lims=(-1, 1), num_iter=2000):
         super(DeepFool, self).__init__(model, lims=lims, num_iter=num_iter)
         self.num_classes = num_classes
 

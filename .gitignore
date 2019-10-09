@@ -1,0 +1,7 @@
+# data = datasets (MNIST, CIFAR10, SVHN)
+data/
+
+# model_dict --> too heavy
+model_dict/
+archive/
+
