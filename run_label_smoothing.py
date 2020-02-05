@@ -305,6 +305,7 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
             # Load an already trained model
             elif not defensive_distillation:
                 to_train = False
+                teacher_net = False
                 net.load_state_dict(checkpoint[model_specifications])
                 loss_history = checkpoint["loss_%s"%(model_specifications)]
                 acc_tr = checkpoint["acc_tr_%s"%(model_specifications)]

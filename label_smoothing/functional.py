@@ -287,6 +287,55 @@ class PGD(Attack):
         
         return adv_images
 
+def optim_batch(model, loss_func, epoch, x_batch, y_batch, alpha, smoothing_method="standard",
+    num_classes=10, temperature=None,
+    defensive_distillation=False, teacher_model=False, temp=100,
+    adv_training=False, eps_advtr=0.2, alpha_advtr=0.75):
+    
+    adv_tr_epoch = 2
+
+    # Do we have normal training ?
+    normal_training = (not adv_training or epoch<adv_tr_epoch) and (not defensive_distillation)
+
+    # Normal training
+    if normal_training:
+        y_pred = model(x_batch)
+        smoothed_y_batch = smooth_label(
+            y_batch, alpha, y_pred=y_pred,
+            smoothing_method=smoothing_method,
+            num_classes=num_classes,
+            temperature=temperature)
+        loss = loss_func(y_pred, smoothed_y_batch)
+        loss.backward(retain_graph=True)
+
+    # Adversarial training
+    if adv_training and epoch >= adv_tr_epoch:
+        y_pred = model(x_batch)
+        smoothed_y_batch = smooth_label(y_batch, alpha=0, y_pred=y_pred,
+            smoothing_method="standard", num_classes=num_classes, temperature=None)
+        loss1 = loss_func(y_pred, smoothed_y_batch)
+
+        pgd_attack = PGD(model, loss_func, eps=eps_advtr, alpha=alpha_advtr, iters=20)
+        x_adv_batch = pgd_attack(x_batch, smoothed_y_batch)
+        y_pred_adv = model(x_adv_batch)
+        loss2 = loss_func(y_pred_adv, smoothed_y_batch)
+
+        loss = 0.5*loss1 + 0.5*loss2
+        loss.backward(retain_graph=True)
+
+    # Defensive distillation
+    if defensive_distillation:
+        y_pred = model(x_batch, temp=temp)
+        if teacher_model:
+            smoothed_y_batch = teacher_model(x_batch, temp=temp)
+        else:
+            smoothed_y_batch = smooth_label(y_batch, alpha=0, y_pred=y_pred,
+            smoothing_method="standard", num_classes=num_classes, temperature=None)
+        loss = loss_func(y_pred, smoothed_y_batch)
+        loss.backward(retain_graph=True)
+
+    return loss
+
 
 def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        learning_rate=0.1, verbose=1, alpha=0,
@@ -306,7 +355,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         - the loss function after each iteration
         - the accuracy on the validation set
     """
-    temp = 6
+
     # configure optimizer
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     if use_lbfgs:
@@ -315,7 +364,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         optimizer = optim.SGD(parameters, lr=learning_rate)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', patience=1, verbose=True,
+            optimizer, mode='min', patience=5, verbose=True,
             factor=0.1)
     if adv_training:
         pgd_attack = PGD(model, loss_func, eps = adv_training_param, alpha = adv_training_reg_param, iters = 3)
@@ -336,49 +385,20 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
             x_batch = x_batch.double()
             if adv_training:
                 x_batch.requires_grad = True
-                
-            def closure(): 
-                optimizer.zero_grad()
-                y_pred = model(x_batch)
-                if defensive_distillation:
-                    y_pred = model(x_batch, temp=temp)
-                if teacher_model:
-                    smoothed_y_batch = teacher_model(x_batch, temp=temp)
-                else:
-                    smoothed_y_batch = smooth_label(
-                    y_batch, alpha, y_pred=y_pred,
-                    smoothing_method=smoothing_method,
-                    num_classes=num_classes,
-                    temperature=temperature)
-                loss = loss_func(y_pred, smoothed_y_batch)
-                #loss.backward(retain_graph=True)
-                if adv_training and epoch >= 20:
-                    #x_adv_batch = PGD_training(model, x_batch, smoothed_y_batch, loss_func,
-                    #    eps=adv_training_param, alpha=adv_training_reg_param, iters=20).double()
-                    x_adv_batch = pgd_attack(x_batch, smoothed_y_batch)
-                    y_pred_adv = model(x_adv_batch)
-                    loss_adv = loss_func(y_pred_adv, smoothed_y_batch)
-                    loss_tot = 0.5*loss + 0.5*loss_adv
-                    loss_tot.backward(retain_graph=True)
 
-                    #x_batch_perturbated = x_batch + adv_training_param*x_batch.grad.data.sign()
-                    #model.zero_grad()
-                    #y_pred_perturbated = model(x_batch_perturbated)
-                    #loss_perturbated = loss_func(y_pred_perturbated, smoothed_y_batch)
-                    #loss_tot = adv_training_reg_param*loss + (1-adv_training_reg_param)*loss_perturbated
-                    #loss_tot.backward(retain_graph=True)
-                    return loss_tot
-                else:
-                    loss.backward(retain_graph=True)
-                    return loss
-                #return loss
+            optimizer.zero_grad()
+            loss = optim_batch(model, loss_func, epoch, x_batch, y_batch, alpha, smoothing_method=smoothing_method,
+                num_classes=num_classes, temperature=temperature,
+                defensive_distillation=defensive_distillation, teacher_model=teacher_model, temp=100,
+                adv_training=adv_training, eps_advtr=adv_training_param, alpha_advtr=adv_training_reg_param)
+            optimizer.step()
 
             # gradient step
-            if use_lbfgs:
-                loss = optimizer.step(closure)
-            else:
-                loss = closure()
-                optimizer.step()
+            #if use_lbfgs:
+            #    loss = optimizer.step(closure)
+            #else:
+            #    loss = closure()
+            #    optimizer.step()
 
         # validation stuff
         if val_loader is not None and epoch >= 0:
@@ -386,7 +406,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
             for x_val, y_val in val_loader:
                 x_val, y_val = x_val.to(device), y_val.to(device)
                 x_val = x_val.double()
-            if teacher_model:
+            if defensive_distillation and teacher_model:
                 y_val_pred = model(x_val, temp=temp)
             else:
                 y_val_pred = model(x_val)
