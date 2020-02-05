@@ -30,13 +30,14 @@ import torch.nn as nn
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torch.nn.functional as F
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 from joblib import delayed, Parallel
 
 
 from label_smoothing.functional import (
     smooth_cross_entropy, smooth_label, one_hot, train_model_smooth, test_model,
-    run_attack, device)
+    run_attack, device, run_attack_transferred)
 from label_smoothing.utils import parse_cmdline_args
 from label_smoothing.mlp import MNISTMLP
 from label_smoothing.lenet import LeNet, LeNetCIFAR10
@@ -83,7 +84,7 @@ if dataset == "MNIST":
     for i, x in enumerate(test_set):
         if i < 1000:
             val_data.append(x)
-        elif i >= 1000 and i < 2000:
+        elif i >= 1000 and i < 3000:
             test.append(x)
 
     # Limit values for X
@@ -145,11 +146,11 @@ elif dataset == "SVHN":
     for i, x in enumerate(test_set):
         if i < 5000:
             val_data.append(x)
-        elif i >= 5000 and i < 9000:
+        elif i >= 5000 and i < 5300:
             test.append(x)
     train_data = []
     for i, x in enumerate(train_set):
-        if i < 10000:
+        if i < 5000:
             train_data.append(x)
 
     # Limit values for X
@@ -160,7 +161,7 @@ elif dataset == "SVHN":
     #os.remove(root+ "/test_32x32.mat")
 
 
-train_loader = torch.utils.data.DataLoader(dataset=train_data,
+train_loader = torch.utils.data.DataLoader(dataset=train_set,
                                            batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(dataset=test, shuffle=True,
                                           batch_size=test_batch_size)
@@ -168,8 +169,8 @@ val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=len(val_da
                                          shuffle=True)
 
 # Convert tensors into test_loader into double tensors
-test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
-            test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
+#test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
+#            test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
 
 
 
@@ -215,6 +216,13 @@ if adv_training:
 to_save_model = args.to_save_model
 use_saved_model = args.use_saved_model
 
+# Defensive distillation ?
+defensive_distillation = args.defensive_distillation
+defensive_distill_message = ""
+teacher_message = ""
+if defensive_distillation:
+    defensive_distill_message = "_defensive"
+    teacher_message= "_teacher"
 
 # define what device we are using
 #cuda = torch.cuda.is_available()
@@ -232,20 +240,25 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if dataset + "_" + model == "MNIST_LeNet":
         net0 = LeNet()
         net = LeNet()
+        teacher_net = LeNet()
         pretrained_net = "lenet_mnist_model.pth"
         net0.load_state_dict(torch.load(pretrained_net, map_location='cpu'))
     elif dataset + "_" + model == "MNIST_Linear":
         net0 = MNISTMLP()
         net = MNISTMLP()
+        teacher_net = MNISTMLP()
     elif dataset + "_" + model == "CIFAR10_LeNet" or dataset + "_" + model == "SVHN_LeNet":
         net0 = LeNetCIFAR10()
         net = LeNetCIFAR10()
+        teacher_net = LeNetCIFAR10()
     elif dataset + "_" + model == "CIFAR10_ResNet" or dataset + "_" + model == "SVHN_ResNet":
         net0 = ResNet18()
         net = ResNet18()
+        teacher_net = ResNet18()
 
     net0 = net0.to(device)
     net = net.to(device)
+    teacher_net = teacher_net.to(device)
 
     print(net0)
     print("label-smoothing method = {} \n".format(smoothing_method))
@@ -261,14 +274,42 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     if  os.path.exists(file_dict):
         checkpoint = torch.load(file_dict)
         if use_saved_model == True and model_specifications in checkpoint.keys():
+            # Defensive distillation
+            if defensive_distillation and (model_specifications + str(defensive_distill_message) in checkpoint.keys()):
+                print("Loading the defensive distillation model!")
+                to_train = False
+                net.load_state_dict(checkpoint[model_specifications + str(defensive_distill_message)])
+                loss_history = checkpoint["loss_%s"%(model_specifications + str(defensive_distill_message))]
+                acc_tr = checkpoint["acc_tr_%s"%(model_specifications + str(defensive_distill_message))]
+                print("Trained model %s with spe. %s loaded successfully" %(file_dict, model_specifications + str(defensive_distill_message)))
+            elif defensive_distillation and (model_specifications + str(teacher_message) in checkpoint.keys()):
+                print("Loading teacher net for defensive distillation ! (spe %s)" %(model_specifications + str(teacher_message) ))
+                teacher_net.load_state_dict(checkpoint[model_specifications + str(teacher_message)])
+                print("Teacher test acc =", test_model(teacher_net, test_loader))
+                to_train = True
+            elif defensive_distillation:
+                print("Training the teacher net !")
+                to_train = True
+                teacher_net, teacher_loss, teacher_acc = train_model_smooth(
+                    net0, train_loader, val_loader, loss_func, num_epochs,learning_rate=learning_rate, alpha=alpha,
+                    smoothing_method=smoothing_method, num_classes=num_classes,
+                    temperature=temperature, adv_training=adv_training,
+                    adv_training_param=adv_training_param, adv_training_reg_param=adv_training_reg_param,
+                    defensive_distillation=defensive_distillation)
+                print("Teacher validation acc =", teacher_acc)
+                print("Teacher test acc =", test_model(teacher_net, test_loader))
+                model_specifications_teacher = model_specifications + str(teacher_message)
+                checkpoint.update({model_specifications_teacher:teacher_net.state_dict()})
+                torch.save(checkpoint, file_dict)
+                print("Teacher model saved in %s with specifi. %s" %(file_dict, model_specifications_teacher))
             # Load an already trained model
-            to_train = False
-            net.load_state_dict(checkpoint[model_specifications])
-            loss_history = checkpoint["loss_%s"%(model_specifications)]
-            acc_tr = checkpoint["acc_tr_%s"%(model_specifications)]
-            print("Trained model %s with spe. %s loaded successfully" %(file_dict, model_specifications))
+            elif not defensive_distillation:
+                to_train = False
+                net.load_state_dict(checkpoint[model_specifications])
+                loss_history = checkpoint["loss_%s"%(model_specifications)]
+                acc_tr = checkpoint["acc_tr_%s"%(model_specifications)]
+                print("Trained model %s with spe. %s loaded successfully" %(file_dict, model_specifications))
         else:
-            print("No saved model (specifications)")
             to_train = True
     else:
         checkpoint = {}
@@ -281,17 +322,19 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
             net0, train_loader, val_loader, loss_func, num_epochs,learning_rate=learning_rate, alpha=alpha,
             smoothing_method=smoothing_method, num_classes=num_classes,
             temperature=temperature, adv_training=adv_training,
-            adv_training_param=adv_training_param, adv_training_reg_param=adv_training_reg_param)
+            adv_training_param=adv_training_param, adv_training_reg_param=adv_training_reg_param,
+            defensive_distillation=defensive_distillation, teacher_model=teacher_net)
 
     if to_save_model == True:
         # Save the trained model
+        model_specifications = model_specifications + str(defensive_distill_message)
         checkpoint.update({
         model_specifications:net.state_dict(),
         "loss_%s"%(model_specifications):loss_history,
         "acc_tr_%s"%(model_specifications):acc_tr
         })
         torch.save(checkpoint, file_dict)
-        print("Model saved in %s"%file_dict)
+        print("Model saved in %s with specifi %s"%(file_dict, model_specifications))
 
     acc_test = test_model(net, test_loader)
 
@@ -304,6 +347,11 @@ def run_experiment(alpha, smoothing_method, epsilons, temperature=None):
     df = []
     for attack_method in attack_methods:
         # Run the attack and outputs adversarial accuracy
+        transferred = 0
+        if transferred > 0:
+            acc_tfr = run_attack_transferred(net)
+            print("TRANSFERRED ATTACK ACCURACY =", acc_tfr)
+            break
         adv_accs[attack_method] = []
         accs, _ = run_attack(net, test_loader, loss_func, epsilons,
                                  attack_method=attack_method, alpha=alpha,
@@ -362,8 +410,8 @@ else:
                for alpha, smoothing_method, temperature in jobs]
 # Save your final results dataframe
 df = pd.concat(list(map(itemgetter(-2), results)))
-results_file = "res_dataframes/%s_%s_smoothing=%s_attacks=%s%s.csv" % (
-    dataset, model, "+".join(smoothing_methods),
+results_file = "res_dataframes/%s_%s%s_smoothing=%s_attacks=%s%s.csv" % (
+    dataset, model, defensive_distill_message, "+".join(smoothing_methods),
     "+".join(attack_methods), adv_message)
 
 df.to_csv(results_file, sep=",")

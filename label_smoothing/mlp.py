@@ -1,8 +1,10 @@
 """
 Author: Elvis Dohmatob <gmdopp@gmail.com>
 """
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 
 class MLP(nn.Module):
@@ -43,10 +45,14 @@ class MNISTMLP(nn.Module):
         self.fc3 = nn.Linear(256, 10)
         self.soft = nn.Softmax(dim=1)
 
-    def forward(self, x):
+    def forward(self, x, temp=False):
         x = x.view(-1, 28 * 28)
+        x = x.double()
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        x = self.soft(x)
-        return x
+        if temp:
+            return self.soft(x/temp)
+        else:
+            x = self.soft(x)
+            return x

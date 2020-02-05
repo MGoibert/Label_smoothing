@@ -104,8 +104,8 @@ class CW(_BaseAttack):
     """
     Carlini-Wagner Method
     """
-    def __init__(self, model, lims=(-1, 1), binary_search_steps=15,
-                 num_iter=20):
+    def __init__(self, model, lims=(-1, 1), binary_search_steps=5,
+                 num_iter=10):
         _BaseAttack.__init__(self, model, lims=lims)
         self.binary_search_steps = binary_search_steps
         self.num_iter = num_iter

@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 from .attacks import FGSM, BIM, DeepFool, CW, CWBis, TriangularAttack
 
@@ -292,7 +293,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                        smoothing_method="standard", num_classes=None,
                        temperature=0.1, use_lbfgs=False,  compute_scores=True,
                        enable_early_stopping=False, adv_training=False, adv_training_param=0.2, 
-                       adv_training_reg_param=0.75):
+                       adv_training_reg_param=0.75, defensive_distillation=False, teacher_model=None):
     """
     Training of a model using label smoothing.
     alpha is the parameter calibrating the strenght of the label smoothing
@@ -305,6 +306,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         - the loss function after each iteration
         - the accuracy on the validation set
     """
+    temp = 6
     # configure optimizer
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     if use_lbfgs:
@@ -313,7 +315,7 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
         optimizer = optim.SGD(parameters, lr=learning_rate)
     if val_loader is not None:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', patience=4, verbose=True,
+            optimizer, mode='min', patience=1, verbose=True,
             factor=0.1)
     if adv_training:
         pgd_attack = PGD(model, loss_func, eps = adv_training_param, alpha = adv_training_reg_param, iters = 3)
@@ -338,7 +340,12 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
             def closure(): 
                 optimizer.zero_grad()
                 y_pred = model(x_batch)
-                smoothed_y_batch = smooth_label(
+                if defensive_distillation:
+                    y_pred = model(x_batch, temp=temp)
+                if teacher_model:
+                    smoothed_y_batch = teacher_model(x_batch, temp=temp)
+                else:
+                    smoothed_y_batch = smooth_label(
                     y_batch, alpha, y_pred=y_pred,
                     smoothing_method=smoothing_method,
                     num_classes=num_classes,
@@ -374,12 +381,15 @@ def train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs,
                 optimizer.step()
 
         # validation stuff
-        if val_loader is not None and epoch >= 20:
+        if val_loader is not None and epoch >= 0:
             model.eval()
             for x_val, y_val in val_loader:
                 x_val, y_val = x_val.to(device), y_val.to(device)
                 x_val = x_val.double()
-            y_val_pred = model(x_val)
+            if teacher_model:
+                y_val_pred = model(x_val, temp=temp)
+            else:
+                y_val_pred = model(x_val)
             smoothed_y_val = smooth_label(y_val, alpha, y_pred=y_val_pred,
                                           smoothing_method=smoothing_method,
                                           num_classes=num_classes,
@@ -436,7 +446,7 @@ def test_model(model, test_loader):
 
 def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                alpha=None, smoothing_method="adversarial", temperature=None,
-               num_classes=None, lims=(0, 1), num_iter=100):
+               num_classes=None, lims=(0, 1), num_iter=100, save=0):
     """
     Run the fgsm attack on the whole test set.
     Outputs = adversarial accuracy and adversarial examples
@@ -450,6 +460,8 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
     correct = {}
     num_test = np.zeros(num_classes + 1)
     adv_examples = {}
+    if save > 0.0:
+        adv_ex = list()
 
     if len(np.unique(epsilons)) != len(epsilons):
         raise ValueError("The epsilons must be unique!")
@@ -548,6 +560,15 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
                 correct[epsilon][label] += num_hits
                 assert correct[epsilon][label] <= num_test[label]
 
+        if save > 0.0:
+            if output.argmax() != target:
+                if len(adv_ex) < 5000:
+                    data_tfr = data.detach().numpy()
+                    target_tfr = target[0]
+                    perturbed_data_tfr = perturbed_data.detach().numpy()
+                    adv_ex.append([data_tfr, target_tfr, perturbed_data_tfr])
+
+
             # XXX uncomment
             # if epsilon not in adv_examples:
             #     adv_examples[epsilon] = []
@@ -577,5 +598,30 @@ def run_attack(model, test_loader, loss_func, epsilons, attack_method=None,
             correct[epsilon][-1], num_test[-1],
             final_acc[epsilon][-1]))
 
+    if save > 0.0:
+        print("Saving adversarial examples...")
+        np.save(f"/Users/m.goibert/Downloads/transferred_ex_MNIST_LeNet_{epsilons[0]}.npy", adv_ex)
+
+
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
+
+
+def run_attack_transferred(model):
+    adv_ex_list = np.load("/Users/m.goibert/Downloads/transferred_ex_MNIST_LeNet_0.4.npy", allow_pickle=True)
+    correct = 0.0
+    total_nb = 0.0
+    for (x, y, adv) in adv_ex_list:
+        x = torch.tensor(x)
+        adv = torch.tensor(adv).squeeze(0)
+        #print("size adv =", adv.size())
+        pred = model(x).argmax()
+        #print("pred =", pred)
+        if pred == y:
+            total_nb += 1
+            adv_pred = model(adv).argmax()
+            if adv_pred == y:
+                correct+=1
+    print("total_nb =", total_nb, "and correct =", correct, "and ratio=", correct/total_nb)
+    return correct/total_nb
+

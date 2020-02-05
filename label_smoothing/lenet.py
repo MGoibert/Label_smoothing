@@ -17,6 +17,7 @@ class LeNet(nn.Module):
         self.fc2 = nn.Linear(50, 10)
 
     def encode(self, x):
+        x = x.double()
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
         x = x.view(-1, 320)
@@ -24,8 +25,11 @@ class LeNet(nn.Module):
         x = F.dropout(x, training=self.training)
         return self.fc2(x)
 
-    def forward(self, x):
-        return F.softmax(self.encode(x), dim=1)
+    def forward(self, x, temp=False):
+        if temp:
+            return F.softmax(self.encode(x)/temp, dim=1)
+        else:
+            return F.softmax(self.encode(x), dim=1)
 
 
 class LeNetCIFAR10(nn.Module):
@@ -38,12 +42,16 @@ class LeNetCIFAR10(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
 
-    def forward(self, x):
+    def forward(self, x, temp=False):
+        x = x.double()
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = x.view(-1, 16 * 5 * 5)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
-        x = F.softmax(x, dim=1)
-        return x
+        if temp:
+            return F.softmax(x/temp, dim=1)
+        else:
+            x = F.softmax(x, dim=1)
+            return x

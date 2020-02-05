@@ -92,5 +92,8 @@ def parse_cmdline_args():
     parser.add_argument(
         '--adv_training_reg_param', type=float, default=0.5,
         help="Alpha (regularisation) parameter for adversarial training")
+    parser.add_argument(
+        '--defensive_distillation', action="store_true",
+        help="Use defensive distillation")
 
     return parser.parse_args()

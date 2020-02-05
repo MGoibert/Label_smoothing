@@ -67,8 +67,8 @@ test_loader = torch.utils.data.DataLoader(dataset=test, shuffle=True,
 val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=len(val_data),
                                          shuffle=True)
 # Convert tensors into test_loader into double tensors
-test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
-            test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
+#test_loader.dataset = tuple(zip(map(lambda x: x.double(), map(itemgetter(0),
+#            test_loader.dataset)), map(itemgetter(1), test_loader.dataset)))
 
 
 # ------ Model
@@ -80,6 +80,7 @@ class MNISTnet(nn.Module):
         self.soft = nn.Softmax(dim=1)
 
     def forward(self, x):
+        x = x.double()
         x = x.view(-1, 28 * 28)
         x = self.fc1(x)
         x = self.soft(x)
@@ -94,13 +95,15 @@ model = MNISTnet()
 smoothing_methods = ["adversarial"]
 smoothing_method = "adversarial"
 
-alphas = [0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
-alpha = 0
+alphas = [0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.0]
+#alpha = 0
 
-alphas = [0]
+#alphas = [0]
 dict_gap = {}
+dict_gradient = {}
 for alpha in alphas:
     dict_gap[alpha] = []
+    dict_gradient[alpha] = []
     net, loss_history, acc_tr = train_model_smooth(model, train_loader, val_loader, loss_func, num_epochs, alpha=alpha,
                        smoothing_method=smoothing_method, num_classes=10)
     print("test accuracy =", test_model(net, test_loader))
@@ -109,20 +112,34 @@ for alpha in alphas:
         theta = p.data
 
     for i in range(10):
+        dict_gradient[alpha].insert(0, np.linalg.norm(theta[i], ord=2))
         for j in range(10):
             if i != j:
                 dict_gap[alpha].insert(0, np.linalg.norm(theta[i] - theta[j], ord=1))
+
+#sns.palplot(sns.color_palette("GnBu_d", 8))
+#col = sns.color_palette("GnBu_d", 8) +  [(0.7561707035755478, 0.21038062283737025, 0.22352941176470587)]
+#plt.style.use('ggplot')
+#for i, alpha in enumerate(dict_gap.keys()):
+#    sns.kdeplot(dict_gap[alpha], bw=5, color=col[i], lw=2)
+#plt.xlabel(r'BLS Temp. 0.1 0.01 0.001 0.0001 Adv. train. Natural: $0.4 \; 0.5$')
+#plt.xlabel(r'Gradient gap distribution: $|| \theta_i - \theta_j ||_1, \forall \; i \neq j$')
+#plt.ylabel(r'Density')
+#plt.title("Gradient gap for ALS vs natural classifiers")
+#plt.savefig("/Users/m.goibert/Documents/Criteo/Project_1-Label_Smoothing/New_toy_example/gradient_gap", dpi=500)
+#plt.show()
+
 
 sns.palplot(sns.color_palette("GnBu_d", 8))
 col = sns.color_palette("GnBu_d", 8) +  [(0.7561707035755478, 0.21038062283737025, 0.22352941176470587)]
 plt.style.use('ggplot')
 for i, alpha in enumerate(dict_gap.keys()):
-    sns.kdeplot(dict_gap[alpha], bw=5, color=col[i], lw=2)
-plt.xlabel(r'BLS Temp. 0.1 0.01 0.001 0.0001 Adv. train. Natural: $0.4 \; 0.5$')
-#plt.xlabel(r'Gradient gap distribution: $|| \theta_i - \theta_j ||_1, \forall \; i \neq j$')
+    sns.kdeplot(dict_gradient[alpha], bw=5, color=col[i], lw=2)
+#plt.xlabel(r'BLS Temp. 0.1 0.01 0.001 0.0001 Adv. train. Natural: $0.4 \; 0.5$')
+plt.xlabel(r'Gradient distribution: $|| \theta_i||_2, \forall \; i$')
 plt.ylabel(r'Density')
-plt.title("Gradient gap for ALS vs natural classifiers")
-plt.savefig("/Users/m.goibert/Documents/Criteo/Project_1-Label_Smoothing/New_toy_example/gradient_gap", dpi=500)
+plt.title("Gradient for ALS vs natural classifiers")
+plt.savefig("/Users/m.goibert/Documents/Criteo/Project_1-Label_Smoothing/New_toy_example/gradient", dpi=500)
 plt.show()
 
 
